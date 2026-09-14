@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+/* 数据可视化调色板（浅色主题）。颜色槽按验证通过的顺序固定分配，
+   柱状图/图例/表格通过 var(--series-N) 引用，实现“颜色跟随科目而非排名”。
+   如需深色主题，可在此处用 prefers-color-scheme / data-theme 覆盖这些变量。 */
+.viz-root {
+  color-scheme: light;
+  --surface-1: #fcfcfb;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #898781;
+  --gridline: #e1e0d9;
+  --baseline: #c3c2b7;
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+  --series-7: #4a3aa7;
+  --series-8: #e34948;
+  --series-other: #9a9a95;
+}
