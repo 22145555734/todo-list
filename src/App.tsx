@@ -1,10 +1,16 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import Auth from "./Auth";
-import Stats from "./Stats";
 import TodoList from "./TodoList";
 import { StoreProvider, useStore } from "./store";
 
+const Stats = lazy(() => import("./Stats"));
+
 type Tab = "todo" | "stats";
+
+const TABS: { value: Tab; label: string }[] = [
+  { value: "todo", label: "待办事项" },
+  { value: "stats", label: "学习统计" },
+];
 
 function Shell() {
   const { token, authReady, username, error, clearError, logout } = useStore();
@@ -26,15 +32,10 @@ function Shell() {
     );
   }
 
-  const tabs: { value: Tab; label: string }[] = [
-    { value: "todo", label: "待办事项" },
-    { value: "stats", label: "学习统计" },
-  ];
-
   return (
     <div className="min-h-screen bg-gray-100 py-8">
       <nav className="mx-auto mb-4 flex w-full max-w-md gap-1 rounded-xl bg-gray-200 p-1">
-        {tabs.map(({ value, label }) => (
+        {TABS.map(({ value, label }) => (
           <button
             key={value}
             onClick={() => setTab(value)}
@@ -75,7 +76,17 @@ function Shell() {
         </button>
       </div>
 
-      {tab === "todo" ? <TodoList /> : <Stats />}
+      {tab === "todo" ? (
+        <TodoList />
+      ) : (
+        <Suspense
+          fallback={
+            <div className="py-16 text-center text-gray-400">加载中…</div>
+          }
+        >
+          <Stats />
+        </Suspense>
+      )}
     </div>
   );
 }
