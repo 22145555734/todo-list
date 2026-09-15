@@ -1,133 +1,254 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useState,
   type ReactNode,
 } from "react";
+import { api } from "./api";
+import { clearSession, getToken, getUsername, setSession } from "./token";
 import type { TimeSession, Todo } from "./types";
 
-const TODO_KEY = "todo-list";
-const SESSION_KEY = "todo-time-sessions";
-
-function load<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
 interface StoreValue {
+  token: string | null;
+  username: string | null;
+  authReady: boolean;
+  loading: boolean;
+  error: string | null;
+  clearError: () => void;
+  login: (username: string, password: string) => Promise<void>;
+  register: (username: string, password: string) => Promise<void>;
+  logout: () => void;
   todos: Todo[];
   sessions: TimeSession[];
-  /** 当前正在计时的待办 id，没有则为 null */
   runningTodoId: string | null;
-  addTodo: (text: string) => void;
-  toggleTodo: (id: string) => void;
-  deleteTodo: (id: string) => void;
-  editTodo: (id: string, text: string) => void;
-  clearCompleted: () => void;
-  /** 开始/暂停某事项的计时；开始时会自动暂停其它正在运行的计时器 */
-  toggleTimer: (todoId: string) => void;
-  resetTodoTime: (todoId: string) => void;
-  /** 某事项累计时长（毫秒），now 用于把进行中的会话算到当前时刻 */
+  addTodo: (text: string) => Promise<void>;
+  toggleTodo: (id: string) => Promise<void>;
+  deleteTodo: (id: string) => Promise<void>;
+  editTodo: (id: string, text: string) => Promise<void>;
+  clearCompleted: () => Promise<void>;
+  toggleTimer: (todoId: string) => Promise<void>;
+  resetTodoTime: (todoId: string) => Promise<void>;
   elapsedMs: (todoId: string, now: number) => number;
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [todos, setTodos] = useState<Todo[]>(() => load<Todo[]>(TODO_KEY, []));
-  const [sessions, setSessions] = useState<TimeSession[]>(() =>
-    load<TimeSession[]>(SESSION_KEY, []),
+  const [token, setToken] = useState<string | null>(() => getToken());
+  const [username, setUsername] = useState<string | null>(() => getUsername());
+  const [authReady, setAuthReady] = useState(false);
+  const [todos, setTodos] = useState<Todo[]>([]);
+  const [sessions, setSessions] = useState<TimeSession[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleError = useCallback((e: unknown) => {
+    setError(e instanceof Error ? e.message : String(e));
+    // token 因 401 被清空时，回到未登录态
+    if (!getToken()) {
+      setToken(null);
+      setUsername(null);
+      setTodos([]);
+      setSessions([]);
+    }
+  }, []);
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [t, s] = await Promise.all([api.listTodos(), api.listSessions()]);
+      setTodos(t);
+      setSessions(s);
+    } catch (e) {
+      handleError(e);
+    } finally {
+      setLoading(false);
+    }
+  }, [handleError]);
+
+  const refreshSessions = useCallback(async () => {
+    try {
+      setSessions(await api.listSessions());
+    } catch (e) {
+      handleError(e);
+    }
+  }, [handleError]);
+
+  useEffect(() => {
+    if (token) {
+      loadData().finally(() => setAuthReady(true));
+    } else {
+      setAuthReady(true);
+    }
+  }, [token, loadData]);
+
+  const login = useCallback(
+    async (u: string, p: string) => {
+      setError(null);
+      try {
+        const res = await api.login(u, p);
+        setSession(res.token, res.username);
+        setToken(res.token);
+        setUsername(res.username);
+        await loadData();
+      } catch (e) {
+        handleError(e);
+        throw e;
+      }
+    },
+    [loadData, handleError],
   );
 
-  useEffect(() => {
-    localStorage.setItem(TODO_KEY, JSON.stringify(todos));
-  }, [todos]);
+  const register = useCallback(
+    async (u: string, p: string) => {
+      setError(null);
+      try {
+        const res = await api.register(u, p);
+        setSession(res.token, res.username);
+        setToken(res.token);
+        setUsername(res.username);
+        await loadData();
+      } catch (e) {
+        handleError(e);
+        throw e;
+      }
+    },
+    [loadData, handleError],
+  );
 
-  useEffect(() => {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(sessions));
-  }, [sessions]);
+  const logout = useCallback(() => {
+    clearSession();
+    setToken(null);
+    setUsername(null);
+    setTodos([]);
+    setSessions([]);
+    setError(null);
+  }, []);
+
+  const clearError = useCallback(() => setError(null), []);
 
   const runningTodoId =
     sessions.find((s) => s.end === null)?.todoId ?? null;
 
-  const addTodo = (text: string) => {
-    const t = text.trim();
-    if (!t) return;
-    setTodos((prev) => [
-      ...prev,
-      { id: crypto.randomUUID(), text: t, completed: false },
-    ]);
-  };
-
-  const toggleTodo = (id: string) => {
-    setTodos((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t)),
-    );
-  };
-
-  const deleteTodo = (id: string) => {
-    setTodos((prev) => prev.filter((t) => t.id !== id));
-    // 删除事项时保留其历史计时记录，只结束仍进行中的会话
-    setSessions((prev) => {
-      const running = prev.find((s) => s.end === null);
-      if (running && running.todoId === id) {
-        return prev.map((s) =>
-          s.id === running.id ? { ...s, end: Date.now() } : s,
-        );
+  const addTodo = useCallback(
+    async (text: string) => {
+      const t = text.trim();
+      if (!t) return;
+      setError(null);
+      try {
+        const created = await api.createTodo(t);
+        setTodos((prev) => [...prev, created]);
+      } catch (e) {
+        handleError(e);
       }
-      return prev;
-    });
-  };
+    },
+    [handleError],
+  );
 
-  const editTodo = (id: string, text: string) => {
-    const t = text.trim();
-    if (!t) return;
-    setTodos((prev) =>
-      prev.map((todo) => (todo.id === id ? { ...todo, text: t } : todo)),
-    );
-  };
-
-  const clearCompleted = () => {
-    setTodos((prev) => prev.filter((t) => !t.completed));
-  };
-
-  const toggleTimer = (todoId: string) => {
-    const subject = todos.find((t) => t.id === todoId)?.text ?? "已删除事项";
-    setSessions((prev) => {
-      const running = prev.find((s) => s.end === null);
-      // 暂停当前正在运行的这个计时器
-      if (running && running.todoId === todoId) {
-        return prev.map((s) =>
-          s.id === running.id ? { ...s, end: Date.now() } : s,
-        );
+  const toggleTodo = useCallback(
+    async (id: string) => {
+      const todo = todos.find((x) => x.id === id);
+      if (!todo) return;
+      setError(null);
+      try {
+        const updated = await api.updateTodo(id, { completed: !todo.completed });
+        setTodos((prev) => prev.map((x) => (x.id === id ? updated : x)));
+      } catch (e) {
+        handleError(e);
       }
-      // 先暂停其它正在运行的计时器，再开启新的
-      const now = Date.now();
-      const paused = running
-        ? prev.map((s) => (s.id === running.id ? { ...s, end: now } : s))
-        : prev;
-      return [
-        ...paused,
-        { id: crypto.randomUUID(), todoId, subject, start: now, end: null },
-      ];
-    });
-  };
+    },
+    [todos, handleError],
+  );
 
-  const resetTodoTime = (todoId: string) => {
-    setSessions((prev) => prev.filter((s) => s.todoId !== todoId));
-  };
+  const editTodo = useCallback(
+    async (id: string, text: string) => {
+      const t = text.trim();
+      if (!t) return;
+      setError(null);
+      try {
+        const updated = await api.updateTodo(id, { text: t });
+        setTodos((prev) => prev.map((x) => (x.id === id ? updated : x)));
+      } catch (e) {
+        handleError(e);
+      }
+    },
+    [handleError],
+  );
 
-  const elapsedMs = (todoId: string, now: number) =>
-    sessions
-      .filter((s) => s.todoId === todoId)
-      .reduce((sum, s) => sum + ((s.end ?? now) - s.start), 0);
+  const deleteTodo = useCallback(
+    async (id: string) => {
+      setError(null);
+      try {
+        await api.deleteTodo(id);
+        setTodos((prev) => prev.filter((x) => x.id !== id));
+        await refreshSessions();
+      } catch (e) {
+        handleError(e);
+      }
+    },
+    [refreshSessions, handleError],
+  );
+
+  const clearCompleted = useCallback(async () => {
+    setError(null);
+    try {
+      await api.clearCompleted();
+      await loadData();
+    } catch (e) {
+      handleError(e);
+    }
+  }, [loadData, handleError]);
+
+  const toggleTimer = useCallback(
+    async (todoId: string) => {
+      setError(null);
+      try {
+        if (runningTodoId === todoId) {
+          await api.pauseTimer(todoId, Date.now());
+        } else {
+          await api.startTimer(todoId, Date.now());
+        }
+        await refreshSessions();
+      } catch (e) {
+        handleError(e);
+      }
+    },
+    [runningTodoId, refreshSessions, handleError],
+  );
+
+  const resetTodoTime = useCallback(
+    async (todoId: string) => {
+      setError(null);
+      try {
+        await api.resetTime(todoId);
+        await refreshSessions();
+      } catch (e) {
+        handleError(e);
+      }
+    },
+    [refreshSessions, handleError],
+  );
+
+  const elapsedMs = useCallback(
+    (todoId: string, now: number) =>
+      sessions
+        .filter((s) => s.todoId === todoId)
+        .reduce((sum, s) => sum + ((s.end ?? now) - s.start), 0),
+    [sessions],
+  );
 
   const value: StoreValue = {
+    token,
+    username,
+    authReady,
+    loading,
+    error,
+    clearError,
+    login,
+    register,
+    logout,
     todos,
     sessions,
     runningTodoId,
