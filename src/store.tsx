@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from "react";
@@ -129,8 +130,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const clearError = useCallback(() => setError(null), []);
 
-  const runningTodoId =
-    sessions.find((s) => s.end === null)?.todoId ?? null;
+  const runningSession = useMemo(
+    () => sessions.find((s) => s.end === null) ?? null,
+    [sessions],
+  );
+  const runningTodoId = runningSession?.todoId ?? null;
+
+  // 预计算每个 todo 已完成会话的累计时长，elapsedMs 改为 O(1) 查询
+  const completedMsByTodo = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const s of sessions) {
+      if (s.end !== null) {
+        m.set(s.todoId, (m.get(s.todoId) ?? 0) + (s.end - s.start));
+      }
+    }
+    return m;
+  }, [sessions]);
 
   const addTodo = useCallback(
     async (text: string) => {
@@ -232,11 +247,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   );
 
   const elapsedMs = useCallback(
-    (todoId: string, now: number) =>
-      sessions
-        .filter((s) => s.todoId === todoId)
-        .reduce((sum, s) => sum + ((s.end ?? now) - s.start), 0),
-    [sessions],
+    (todoId: string, now: number) => {
+      let total = completedMsByTodo.get(todoId) ?? 0;
+      if (runningSession && runningSession.todoId === todoId) {
+        total += now - runningSession.start;
+      }
+      return total;
+    },
+    [completedMsByTodo, runningSession],
   );
 
   const value: StoreValue = {
