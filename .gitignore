@@ -11,3 +11,6 @@ dist-ssr
 
 # Claude Code（本地专用，不上传）
 CLAUDE.md
+
+# 部署密钥（服务器上用，绝不提交）
+.env
