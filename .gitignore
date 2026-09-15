@@ -8,3 +8,6 @@ dist-ssr
 !.vscode/extensions.json
 .idea
 .DS_Store
+
+# Claude Code（本地专用，不上传）
+CLAUDE.md
