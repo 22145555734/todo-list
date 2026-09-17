@@ -16,7 +16,7 @@
 
 - React 18 + TypeScript 5
 - Vite 5
-- Tailwind CSS 4
+- Tailwind CSS 3（**已锁定，勿升 v4** —— v4 使用原生级联层，会让部分手机内置浏览器样式全部失效，详见 `更新日志.md`）
 - Vitest 2 + @testing-library/react
 
 **后端**
