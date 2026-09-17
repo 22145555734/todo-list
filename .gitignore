@@ -9,8 +9,5 @@ dist-ssr
 .idea
 .DS_Store
 
-# Claude Code（本地专用，不上传）
-CLAUDE.md
-
-# 部署密钥（服务器上用，绝不提交）
+# 环境变量文件
 .env

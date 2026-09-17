@@ -45,7 +45,17 @@ cd backend
 mvn spring-boot:run   # 需本地 MySQL，或通过环境变量指定连接
 ```
 
-后端关键环境变量：`DB_URL`、`DB_USERNAME`、`DB_PASSWORD`、`JWT_SECRET`、`JWT_EXPIRATION_MS`。
+后端环境变量：
+
+| 变量 | 必填 | 说明 |
+|---|---|---|
+| `DB_PASSWORD` | ✅ | 无默认值，缺失则启动失败 |
+| `JWT_SECRET` | ✅ | 无默认值，缺失则启动失败；至少 32 字节 |
+| `DB_URL` | 否 | 默认连本地 MySQL 的 `todo` 库 |
+| `DB_USERNAME` | 否 | 默认 `todo` |
+| `JWT_EXPIRATION_MS` | 否 | 默认 2592000000（30 天） |
+
+两个必填项刻意不设兜底值：本仓库是公开的，写死的默认密钥等于公开凭据。
 
 ## Docker 部署
 
