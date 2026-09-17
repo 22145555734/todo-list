@@ -1,4 +1,6 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 /* 数据可视化调色板（浅色主题）。颜色槽按验证通过的顺序固定分配，
    柱状图/图例/表格通过 var(--series-N) 引用，实现“颜色跟随科目而非排名”。
