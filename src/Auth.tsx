@@ -27,7 +27,9 @@ export default function Auth() {
       <h1 className="mb-1 text-2xl font-bold text-gray-800">
         {mode === "login" ? "登录" : "注册"}
       </h1>
-      <p className="mb-4 text-sm text-gray-500">
+      {/* 25 个全角字符：text-sm（14px）在 336px 卡片内宽下会溢出 14px，
+          末尾正好挤掉一个字。text-xs（12px）在 360px 窄屏手机上仍有余量。 */}
+      <p className="mb-4 text-xs text-gray-500">
         待办清单，让时间有处可放；等级称号，让坚持有迹可循
       </p>
 
