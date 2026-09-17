@@ -96,6 +96,6 @@ backend/             # Spring Boot 后端
 ├── auth/            # 注册 / 登录 + JWT 签发校验 + 安全过滤链
 ├── user/            # 用户实体
 ├── todo/            # 待办 CRUD
-├── session/         # 计时会话（开始 / 暂停 / 清零）
+├── session/         # 计时会话（开始 / 暂停 / 迁移时长）
 └── exception/       # 全局异常处理
 ```

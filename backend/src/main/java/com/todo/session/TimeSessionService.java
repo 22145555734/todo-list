@@ -83,12 +83,6 @@ public class TimeSessionService {
         });
     }
 
-    @Transactional
-    public void reset(String todoId) {
-        Long uid = Auths.userId();
-        sessionRepository.deleteByUserIdAndTodoId(uid, todoId);
-    }
-
     private Todo owned(Long uid, String id) {
         return todoRepository.findById(id)
                 .filter(t -> t.getUserId().equals(uid))

@@ -40,12 +40,6 @@ public class TimeSessionController {
         sessionService.pause(id, req);
     }
 
-    @PostMapping("/todos/{id}/reset")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void reset(@PathVariable String id) {
-        sessionService.reset(id);
-    }
-
     @PostMapping("/todos/{id}/adopt-time")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void adoptTime(@PathVariable String id, @RequestBody AdoptTimeRequest req) {

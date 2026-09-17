@@ -9,5 +9,4 @@ public interface TimeSessionRepository extends JpaRepository<TimeSession, String
     List<TimeSession> findByUserIdAndEndIsNull(Long userId);
     Optional<TimeSession> findFirstByUserIdAndTodoIdAndEndIsNull(Long userId, String todoId);
     List<TimeSession> findByUserIdAndTodoId(Long userId, String todoId);
-    void deleteByUserIdAndTodoId(Long userId, String todoId);
 }
