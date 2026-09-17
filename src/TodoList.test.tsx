@@ -15,8 +15,8 @@ vi.mock("./api", () => {
     register: vi.fn(),
     login: vi.fn(),
     listTodos: vi.fn(async () => todos),
-    createTodo: vi.fn(async (text: string) => {
-      const todo = { id: nextId("todo"), text, completed: false };
+    createTodo: vi.fn(async (text: string, parentId: string | null = null) => {
+      const todo: Todo = { id: nextId("todo"), text, completed: false, parentId };
       todos = [...todos, todo];
       return todo;
     }),
@@ -27,21 +27,33 @@ vi.mock("./api", () => {
         return updated;
       },
     ),
+    // 与后端一致：删合集会级联删掉它的子集
     deleteTodo: vi.fn(async (id: string) => {
-      todos = todos.filter((t) => t.id !== id);
+      todos = todos.filter((t) => t.id !== id && t.parentId !== id);
     }),
     clearCompleted: vi.fn(async () => {
-      todos = todos.filter((t) => !t.completed);
+      const completedIds = new Set(
+        todos.filter((t) => t.completed).map((t) => t.id),
+      );
+      todos = todos.filter(
+        (t) =>
+          !t.completed &&
+          !(t.parentId !== null && completedIds.has(t.parentId)),
+      );
     }),
     listSessions: vi.fn(async () => sessions),
     startTimer: vi.fn(async (id: string, start: number) => {
       sessions = sessions.map((s) =>
         s.end === null ? { ...s, end: start } : s,
       );
+      const todo = todos.find((t) => t.id === id);
       const session: TimeSession = {
         id: nextId("session"),
         todoId: id,
-        subject: todos.find((t) => t.id === id)?.text ?? "",
+        subject: todo?.text ?? "",
+        rootSubject: todo?.parentId
+          ? (todos.find((t) => t.id === todo.parentId)?.text ?? null)
+          : null,
         start,
         end: null,
       };
@@ -55,6 +67,20 @@ vi.mock("./api", () => {
     }),
     resetTime: vi.fn(async (id: string) => {
       sessions = sessions.filter((s) => s.todoId !== id);
+    }),
+    adoptTime: vi.fn(async (containerId: string, targetId: string) => {
+      const container = todos.find((t) => t.id === containerId);
+      const target = todos.find((t) => t.id === targetId);
+      sessions = sessions.map((s) =>
+        s.todoId === containerId
+          ? {
+              ...s,
+              todoId: targetId,
+              subject: target?.text ?? "",
+              rootSubject: container?.text ?? null,
+            }
+          : s,
+      );
     }),
   };
 
@@ -213,4 +239,85 @@ test("暂停计时", async () => {
   expect(
     await screen.findByRole("button", { name: "清零计时" }),
   ).toBeInTheDocument();
+});
+
+/** 建一个合集「408」，内含子集「操作系统」 */
+async function makeContainer(
+  user: ReturnType<typeof userEvent.setup>,
+): Promise<void> {
+  await user.type(screen.getByPlaceholderText("添加新任务..."), "408{enter}");
+  expect(await screen.findByText("408")).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "添加子集" }));
+  await user.type(screen.getByPlaceholderText("添加子集..."), "操作系统{enter}");
+  expect(await screen.findByText("操作系统")).toBeInTheDocument();
+}
+
+test("加了子集的事项变成合集，自身不再有计时功能", async () => {
+  const user = userEvent.setup();
+  renderTodoList();
+
+  await user.type(screen.getByPlaceholderText("添加新任务..."), "408{enter}");
+  // 未加子集前和普通事项一样可以计时
+  expect(await screen.findByRole("button", { name: "开始计时" })).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "添加子集" }));
+  await user.type(screen.getByPlaceholderText("添加子集..."), "操作系统{enter}");
+  expect(await screen.findByText("操作系统")).toBeInTheDocument();
+
+  // 计时按钮只剩子集那一个
+  const timerButtons = await screen.findAllByRole("button", {
+    name: "开始计时",
+  });
+  expect(timerButtons).toHaveLength(1);
+  expect(screen.getByText("1 个子集")).toBeInTheDocument();
+});
+
+test("子集没有等级系统，合集保留等级", async () => {
+  const user = userEvent.setup();
+  renderTodoList();
+  await makeContainer(user);
+
+  // 只有合集有等级卡片，子集没有
+  expect(screen.getAllByText("Lv.1")).toHaveLength(1);
+});
+
+test("删除合集会连子集一起删掉", async () => {
+  const user = userEvent.setup();
+  renderTodoList();
+  await makeContainer(user);
+
+  // 第一个删除按钮属于合集本身（合集渲染在子集之前）
+  await user.click(screen.getAllByRole("button", { name: "删除任务" })[0]);
+
+  await waitFor(() =>
+    expect(screen.queryByText("408")).not.toBeInTheDocument(),
+  );
+  expect(screen.queryByText("操作系统")).not.toBeInTheDocument();
+});
+
+test("加子集时提示迁移合集已有的计时", async () => {
+  const user = userEvent.setup();
+  renderTodoList();
+
+  await user.type(screen.getByPlaceholderText("添加新任务..."), "408{enter}");
+  expect(await screen.findByText("408")).toBeInTheDocument();
+
+  // 先攒一点时长，再把它变成合集
+  await user.click(screen.getByRole("button", { name: "开始计时" }));
+  await screen.findByRole("button", { name: "暂停" });
+  await new Promise((r) => setTimeout(r, 20));
+  await user.click(screen.getByRole("button", { name: "暂停" }));
+
+  await user.click(await screen.findByRole("button", { name: "添加子集" }));
+  await user.type(screen.getByPlaceholderText("添加子集..."), "操作系统{enter}");
+  // 子集本身与迁移提示的按钮同名，故用 findAllByText
+  expect(await screen.findAllByText("操作系统")).not.toHaveLength(0);
+
+  expect(await screen.findByText("暂不迁移")).toBeInTheDocument();
+
+  await user.click(screen.getByText("暂不迁移"));
+  await waitFor(() =>
+    expect(screen.queryByText("暂不迁移")).not.toBeInTheDocument(),
+  );
 });

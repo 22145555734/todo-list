@@ -24,15 +24,21 @@ interface StoreValue {
   todos: Todo[];
   sessions: TimeSession[];
   runningTodoId: string | null;
-  addTodo: (text: string) => Promise<void>;
+  /** 某合集的子集列表（无子集时返回稳定的空数组） */
+  childrenOf: (parentId: string) => Todo[];
+  addTodo: (text: string, parentId?: string | null) => Promise<void>;
   toggleTodo: (id: string) => Promise<void>;
   deleteTodo: (id: string) => Promise<void>;
   editTodo: (id: string, text: string) => Promise<void>;
   clearCompleted: () => Promise<void>;
   toggleTimer: (todoId: string) => Promise<void>;
   resetTodoTime: (todoId: string) => Promise<void>;
+  adoptTime: (containerId: string, targetId: string) => Promise<void>;
+  /** 累计时长：合集为其自身记录与全部子集之和 */
   elapsedMs: (todoId: string, now: number) => number;
 }
+
+const NO_CHILDREN: Todo[] = [];
 
 const StoreContext = createContext<StoreValue | null>(null);
 
@@ -147,13 +153,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return m;
   }, [sessions]);
 
+  const childrenByParent = useMemo(() => {
+    const m = new Map<string, Todo[]>();
+    for (const t of todos) {
+      if (!t.parentId) continue;
+      const list = m.get(t.parentId);
+      if (list) list.push(t);
+      else m.set(t.parentId, [t]);
+    }
+    return m;
+  }, [todos]);
+
+  const childrenOf = useCallback(
+    (parentId: string) => childrenByParent.get(parentId) ?? NO_CHILDREN,
+    [childrenByParent],
+  );
+
   const addTodo = useCallback(
-    async (text: string) => {
+    async (text: string, parentId: string | null = null) => {
       const t = text.trim();
       if (!t) return;
       setError(null);
       try {
-        const created = await api.createTodo(t);
+        const created = await api.createTodo(t, parentId);
         setTodos((prev) => [...prev, created]);
       } catch (e) {
         handleError(e);
@@ -197,7 +219,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setError(null);
       try {
         await api.deleteTodo(id);
-        setTodos((prev) => prev.filter((x) => x.id !== id));
+        // 删除合集会级联删掉它的子集
+        setTodos((prev) => prev.filter((x) => x.id !== id && x.parentId !== id));
         await refreshSessions();
       } catch (e) {
         handleError(e);
@@ -246,7 +269,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [refreshSessions, handleError],
   );
 
-  const elapsedMs = useCallback(
+  const ownMs = useCallback(
     (todoId: string, now: number) => {
       let total = completedMsByTodo.get(todoId) ?? 0;
       if (runningSession && runningSession.todoId === todoId) {
@@ -255,6 +278,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return total;
     },
     [completedMsByTodo, runningSession],
+  );
+
+  const adoptTime = useCallback(
+    async (containerId: string, targetId: string) => {
+      setError(null);
+      try {
+        await api.adoptTime(containerId, targetId);
+        await refreshSessions();
+      } catch (e) {
+        handleError(e);
+      }
+    },
+    [refreshSessions, handleError],
+  );
+
+  // 合集的总时长 = 自身残留记录 + 各子集之和
+  const elapsedMs = useCallback(
+    (todoId: string, now: number) => {
+      let total = ownMs(todoId, now);
+      for (const c of childrenByParent.get(todoId) ?? NO_CHILDREN) {
+        total += ownMs(c.id, now);
+      }
+      return total;
+    },
+    [ownMs, childrenByParent],
   );
 
   const value: StoreValue = {
@@ -270,6 +318,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     todos,
     sessions,
     runningTodoId,
+    childrenOf,
     addTodo,
     toggleTodo,
     deleteTodo,
@@ -277,6 +326,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     clearCompleted,
     toggleTimer,
     resetTodoTime,
+    adoptTime,
     elapsedMs,
   };
 

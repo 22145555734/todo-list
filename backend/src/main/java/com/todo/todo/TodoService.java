@@ -6,7 +6,9 @@ import com.todo.todo.dto.TodoCreateRequest;
 import com.todo.todo.dto.TodoDto;
 import com.todo.todo.dto.TodoUpdateRequest;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,8 +37,17 @@ public class TodoService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "内容不能为空");
         }
         Long uid = Auths.userId();
+        String parentId = req.parentId();
+        if (parentId != null) {
+            Todo parent = owned(parentId);
+            if (parent.getParentId() != null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "子集下不能再加子集");
+            }
+            // 合集由子集分别计时，本身不再计时：结束它仍在进行的会话（保留历史）
+            endRunning(uid, parentId);
+        }
         long now = System.currentTimeMillis();
-        Todo todo = new Todo(UUID.randomUUID().toString(), uid, text, false, now, now);
+        Todo todo = new Todo(UUID.randomUUID().toString(), uid, text, parentId, false, now, now);
         return toDto(todoRepository.save(todo));
     }
 
@@ -63,22 +74,35 @@ public class TodoService {
         Todo todo = todoRepository.findById(id)
                 .filter(t -> t.getUserId().equals(uid))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "事项不存在"));
-        // 结束该事项仍在进行的计时会话（保留历史记录，用于统计）
-        sessionRepository.findFirstByUserIdAndTodoIdAndEndIsNull(uid, id).ifPresent(s -> {
-            s.setEnd(System.currentTimeMillis());
-            sessionRepository.save(s);
-        });
+        // 合集连同子集一起删除；计时记录照旧保留，用于统计
+        for (Todo child : todoRepository.findByUserIdAndParentId(uid, id)) {
+            endRunning(uid, child.getId());
+            todoRepository.delete(child);
+        }
+        endRunning(uid, id);
         todoRepository.delete(todo);
     }
 
     @Transactional
     public void clearCompleted() {
         Long uid = Auths.userId();
-        for (Todo t : todoRepository.findByUserIdOrderByCreatedAtAsc(uid)) {
-            if (t.isCompleted()) {
-                delete(t.getId());
-            }
+        List<Todo> all = todoRepository.findByUserIdOrderByCreatedAtAsc(uid);
+        Set<String> completedIds =
+                all.stream().filter(Todo::isCompleted).map(Todo::getId).collect(Collectors.toSet());
+        for (Todo t : all) {
+            if (!t.isCompleted()) continue;
+            // 合集已完成时其子集会被一并删除，跳过以免重复删除
+            if (t.getParentId() != null && completedIds.contains(t.getParentId())) continue;
+            delete(t.getId());
         }
+    }
+
+    /** 结束某事项仍在进行的计时会话（保留历史记录，用于统计） */
+    private void endRunning(Long uid, String todoId) {
+        sessionRepository.findFirstByUserIdAndTodoIdAndEndIsNull(uid, todoId).ifPresent(s -> {
+            s.setEnd(System.currentTimeMillis());
+            sessionRepository.save(s);
+        });
     }
 
     private Todo owned(String id) {
@@ -89,6 +113,6 @@ public class TodoService {
     }
 
     private TodoDto toDto(Todo t) {
-        return new TodoDto(t.getId(), t.getText(), t.isCompleted());
+        return new TodoDto(t.getId(), t.getText(), t.isCompleted(), t.getParentId());
     }
 }

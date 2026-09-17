@@ -89,6 +89,7 @@ export default function Stats() {
     dateKey(Date.now() - 29 * DAY_MS),
   );
   const [customEnd, setCustomEnd] = useState(() => dateKey(Date.now()));
+  const [mergeSubs, setMergeSubs] = useState(true);
   const [tip, setTip] = useState<{
     bucket: BucketStat;
     x: number;
@@ -111,9 +112,16 @@ export default function Stats() {
     return { startKey: start, endKey: todayK, unit: pickUnit(start, todayK) };
   }, [preset, customStart, customEnd, todayK]);
 
+  // 没有子集时隐藏合并/展开开关，保持原有界面不变
+  const hasSubs = useMemo(
+    () => sessions.some((s) => s.rootSubject !== null),
+    [sessions],
+  );
+  const merge = !hasSubs || mergeSubs;
+
   const { buckets, allSubjects } = useMemo(
-    () => buildStats(sessions, now, startKey, endKey, unit),
-    [sessions, now, startKey, endKey, unit],
+    () => buildStats(sessions, now, startKey, endKey, unit, merge),
+    [sessions, now, startKey, endKey, unit, merge],
   );
 
   // 全量总时长（所有时间）
@@ -214,9 +222,31 @@ export default function Stats() {
   return (
     <div className="mx-auto w-full max-w-3xl rounded-xl bg-white p-6 shadow-lg">
       <h1 className="mb-1 text-2xl font-bold text-gray-800">学习统计</h1>
-      <p className="mb-4 text-sm text-gray-500">
-        各科目的独立时长与总时长 · 按{unitText}统计
-      </p>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-gray-500">
+          各科目的独立时长与总时长 · 按{unitText}统计
+        </p>
+        {hasSubs && (
+          <div className="flex gap-1 rounded-lg bg-gray-100 p-0.5">
+            {[
+              { value: true, label: "合并子集" },
+              { value: false, label: "展开子集" },
+            ].map((o) => (
+              <button
+                key={o.label}
+                onClick={() => setMergeSubs(o.value)}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                  mergeSubs === o.value
+                    ? "bg-white text-blue-600 shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* KPI 卡片 */}
       <div className="mb-4 grid grid-cols-3 gap-3">

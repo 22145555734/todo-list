@@ -1,4 +1,4 @@
-import { memo, useMemo, useState, type FormEvent } from "react";
+import { memo, useCallback, useMemo, useState, type FormEvent } from "react";
 import { useStore } from "./store";
 import { useNow } from "./useNow";
 import { formatHms, formatShort } from "./time";
@@ -15,30 +15,43 @@ const FILTERS: { value: Filter; label: string }[] = [
 
 interface TodoItemProps {
   todo: Todo;
+  /** 本项自身正在计时 */
   running: boolean;
+  /** 子集数量，> 0 表示为合集（自身不再计时） */
+  childCount: number;
+  /** 合集中正在计时的子集名，无则为 null */
+  childRunningName: string | null;
   elapsedMs: (todoId: string, now: number) => number;
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
   onEdit: (id: string, text: string) => void;
   onToggleTimer: (id: string) => void;
   onReset: (id: string) => void;
+  onAddChild: (id: string) => void;
 }
 
 const TodoItem = memo(function TodoItem({
   todo,
   running,
+  childCount,
+  childRunningName,
   elapsedMs,
   onToggle,
   onDelete,
   onEdit,
   onToggleTimer,
   onReset,
+  onAddChild,
 }: TodoItemProps) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState("");
 
-  // 仅当本项正在计时时才每秒 tick，避免整个列表跟着重渲染
-  const now = useNow(running);
+  const isContainer = childCount > 0;
+  const isChild = todo.parentId !== null;
+  const ticking = running || childRunningName !== null;
+
+  // 仅当本项（或其子集）正在计时时才每秒 tick，避免整个列表跟着重渲染
+  const now = useNow(ticking);
   const elapsed = elapsedMs(todo.id, now);
   const info = getLevelInfo(elapsed);
 
@@ -56,7 +69,7 @@ const TodoItem = memo(function TodoItem({
   const cancelEdit = () => setEditing(false);
 
   return (
-    <li className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+    <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
       <div className="flex items-center gap-3">
         <input
           type="checkbox"
@@ -112,74 +125,104 @@ const TodoItem = memo(function TodoItem({
 
       {/* 计时区 */}
       <div className="mt-2 flex items-center justify-between border-t border-gray-100 pt-2">
-        <div className="flex items-center gap-1.5">
-          {running && (
-            <span className="h-2 w-2 animate-pulse rounded-full bg-green-500" />
+        <div className="flex min-w-0 items-center gap-1.5">
+          {ticking && (
+            <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-green-500" />
           )}
           <span
             className={`font-mono text-sm tabular-nums ${
-              running ? "text-green-600" : "text-gray-600"
+              ticking ? "text-green-600" : "text-gray-600"
             }`}
           >
             {formatHms(elapsed)}
           </span>
+          {isContainer && (
+            <span className="truncate text-xs text-gray-500">
+              {childRunningName
+                ? `正在计时：${childRunningName}`
+                : `${childCount} 个子集`}
+            </span>
+          )}
         </div>
-        <div className="flex items-center gap-1.5">
-          <button
-            onClick={() => onToggleTimer(todo.id)}
-            className={`rounded-md px-3 py-1 text-sm font-medium text-white transition ${
-              running
-                ? "bg-amber-500 hover:bg-amber-600 active:bg-amber-700"
-                : "bg-blue-500 hover:bg-blue-600 active:bg-blue-700"
-            }`}
-          >
-            {running ? "暂停" : "开始计时"}
-          </button>
-          {elapsed > 0 && (
+        <div className="flex shrink-0 items-center gap-1">
+          {!isContainer && (
+            <>
+              <button
+                onClick={() => onToggleTimer(todo.id)}
+                className={`rounded-md px-3 py-1 text-sm font-medium text-white transition ${
+                  running
+                    ? "bg-amber-500 hover:bg-amber-600 active:bg-amber-700"
+                    : "bg-blue-500 hover:bg-blue-600 active:bg-blue-700"
+                }`}
+              >
+                {running ? "暂停" : "开始计时"}
+              </button>
+              {elapsed > 0 && (
+                <button
+                  onClick={() => onReset(todo.id)}
+                  className="rounded-md px-2 py-1 text-sm text-gray-400 transition hover:bg-gray-200 hover:text-gray-600"
+                  aria-label="清零计时"
+                  title="清零计时记录"
+                >
+                  清零
+                </button>
+              )}
+            </>
+          )}
+          {!isChild && (
             <button
-              onClick={() => onReset(todo.id)}
-              className="rounded-md px-2 py-1 text-sm text-gray-400 transition hover:bg-gray-200 hover:text-gray-600"
-              aria-label="清零计时"
-              title="清零计时记录"
+              onClick={() => onAddChild(todo.id)}
+              className="rounded-md px-2 py-1 text-sm text-blue-500 transition hover:bg-blue-50 hover:text-blue-600"
+              aria-label="添加子集"
+              title="把这项变成一个合集，给它的子集分别计时"
             >
-              清零
+              + 子集
             </button>
           )}
         </div>
       </div>
 
-      {/* 等级 / 称号 */}
-      <div className="mt-2 border-t border-gray-100 pt-2">
-        <div className="mb-1.5 flex items-center justify-between">
-          <span className="flex items-center gap-1.5">
-            <span className="rounded bg-indigo-500 px-1.5 py-0.5 text-xs font-bold leading-none text-white">
-              Lv.{info.level}
+      {/* 等级 / 称号：合集按各子集累加的总时长计算，子集没有 */}
+      {!isChild && (
+        <div className="mt-2 border-t border-gray-100 pt-2">
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="flex items-center gap-1.5">
+              <span className="rounded bg-indigo-500 px-1.5 py-0.5 text-xs font-bold leading-none text-white">
+                Lv.{info.level}
+              </span>
+              <span className="text-sm font-semibold text-gray-700">
+                {info.title}
+              </span>
             </span>
-            <span className="text-sm font-semibold text-gray-700">
-              {info.title}
+            <span className="text-xs tabular-nums text-gray-500">
+              {info.nextLevel
+                ? `距 Lv.${info.nextLevel} 还需 ${formatShort(info.remainingMs)}`
+                : "已满级"}
             </span>
-          </span>
-          <span className="text-xs tabular-nums text-gray-500">
-            {info.nextLevel
-              ? `距 Lv.${info.nextLevel} 还需 ${formatShort(info.remainingMs)}`
-              : "已满级"}
-          </span>
+          </div>
+          <div className="h-2.5 w-full overflow-hidden rounded-full bg-gray-200 ring-1 ring-inset ring-gray-200">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 transition-all"
+              style={{ width: `${(info.progress * 100).toFixed(1)}%` }}
+            />
+          </div>
         </div>
-        <div className="h-2.5 w-full overflow-hidden rounded-full bg-gray-200 ring-1 ring-inset ring-gray-200">
-          <div
-            className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 transition-all"
-            style={{ width: `${(info.progress * 100).toFixed(1)}%` }}
-          />
-        </div>
-      </div>
-    </li>
+      )}
+    </div>
   );
 });
+
+/** 新建子集后，若合集本身还留着计时记录，提示迁到某个子集下 */
+interface MigrateHint {
+  containerId: string;
+  ms: number;
+}
 
 export default function TodoList() {
   const {
     todos,
     runningTodoId,
+    childrenOf,
     addTodo,
     toggleTodo,
     deleteTodo,
@@ -187,11 +230,15 @@ export default function TodoList() {
     clearCompleted,
     toggleTimer,
     resetTodoTime,
+    adoptTime,
     elapsedMs,
   } = useStore();
 
   const [input, setInput] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
+  const [addingChildFor, setAddingChildFor] = useState<string | null>(null);
+  const [childInput, setChildInput] = useState("");
+  const [migrate, setMigrate] = useState<MigrateHint | null>(null);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -199,24 +246,47 @@ export default function TodoList() {
     setInput("");
   };
 
+  const openAddChild = useCallback((id: string) => {
+    setAddingChildFor(id);
+    setChildInput("");
+  }, []);
+
+  const submitChild = async (e: FormEvent, parent: Todo) => {
+    e.preventDefault();
+    const text = childInput.trim();
+    if (!text) return;
+    const before = elapsedMs(parent.id, Date.now());
+    const isFirst = childrenOf(parent.id).length === 0;
+    // 转成合集后它自己不再计时，先停掉正在跑的计时器
+    if (runningTodoId === parent.id) await toggleTimer(parent.id);
+    await addTodo(text, parent.id);
+    setChildInput("");
+    setAddingChildFor(null);
+    if (isFirst && before > 0) {
+      setMigrate({ containerId: parent.id, ms: before });
+    }
+  };
+
+  const roots = useMemo(() => todos.filter((t) => t.parentId === null), [todos]);
+
   const visibleTodos = useMemo(() => {
     switch (filter) {
       case "active":
-        return todos.filter((t) => !t.completed);
+        return roots.filter((t) => !t.completed);
       case "completed":
-        return todos.filter((t) => t.completed);
+        return roots.filter((t) => t.completed);
       default:
-        return todos;
+        return roots;
     }
-  }, [todos, filter]);
+  }, [roots, filter]);
 
-  const remaining = todos.filter((t) => !t.completed).length;
+  const remaining = roots.filter((t) => !t.completed).length;
 
   return (
     <div className="mx-auto w-full max-w-md rounded-xl bg-white p-6 shadow-lg">
       <h1 className="mb-1 text-2xl font-bold text-gray-800">待办事项</h1>
       <p className="mb-4 text-sm text-gray-500">
-        每个事项可独立计时，累计你在该领域投入的总时间
+        每个事项可独立计时；给事项加上子集后，它的时长由各子集累加
       </p>
 
       <form onSubmit={submit} className="mb-4 flex gap-2">
@@ -257,26 +327,118 @@ export default function TodoList() {
             {todos.length === 0 ? "暂无任务，添加一条吧" : "该筛选条件下无任务"}
           </li>
         ) : (
-          visibleTodos.map((todo) => (
-            <TodoItem
-              key={todo.id}
-              todo={todo}
-              running={runningTodoId === todo.id}
-              elapsedMs={elapsedMs}
-              onToggle={toggleTodo}
-              onDelete={deleteTodo}
-              onEdit={editTodo}
-              onToggleTimer={toggleTimer}
-              onReset={resetTodoTime}
-            />
-          ))
+          visibleTodos.map((todo) => {
+            const children = childrenOf(todo.id);
+            const runningChild =
+              children.find((c) => c.id === runningTodoId) ?? null;
+            return (
+              <li key={todo.id}>
+                <TodoItem
+                  todo={todo}
+                  running={runningTodoId === todo.id}
+                  childCount={children.length}
+                  childRunningName={runningChild?.text ?? null}
+                  elapsedMs={elapsedMs}
+                  onToggle={toggleTodo}
+                  onDelete={deleteTodo}
+                  onEdit={editTodo}
+                  onToggleTimer={toggleTimer}
+                  onReset={resetTodoTime}
+                  onAddChild={openAddChild}
+                />
+
+                {children.length > 0 && (
+                  <ul className="ml-3 mt-2 space-y-2 border-l-2 border-blue-100 pl-3">
+                    {children.map((c) => (
+                      <li key={c.id}>
+                        <TodoItem
+                          todo={c}
+                          running={runningTodoId === c.id}
+                          childCount={0}
+                          childRunningName={null}
+                          elapsedMs={elapsedMs}
+                          onToggle={toggleTodo}
+                          onDelete={deleteTodo}
+                          onEdit={editTodo}
+                          onToggleTimer={toggleTimer}
+                          onReset={resetTodoTime}
+                          onAddChild={openAddChild}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {addingChildFor === todo.id && (
+                  <form
+                    onSubmit={(e) => submitChild(e, todo)}
+                    className="mt-2 flex gap-2 pl-3"
+                  >
+                    <input
+                      type="text"
+                      value={childInput}
+                      onChange={(e) => setChildInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") setAddingChildFor(null);
+                      }}
+                      placeholder="添加子集..."
+                      autoFocus
+                      className="flex-1 rounded-lg border border-blue-300 px-3 py-1.5 text-sm text-gray-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                    />
+                    <button
+                      type="submit"
+                      className="rounded-lg bg-blue-500 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-blue-600"
+                    >
+                      添加
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAddingChildFor(null)}
+                      className="rounded-lg px-2 py-1.5 text-sm text-gray-500 transition hover:text-gray-700"
+                    >
+                      取消
+                    </button>
+                  </form>
+                )}
+
+                {migrate?.containerId === todo.id && children.length > 0 && (
+                  <div className="ml-3 mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                    <p className="mb-2 text-xs text-amber-800">
+                      「{todo.text}」原有 {formatShort(migrate.ms)} 记录，
+                      迁到哪个子集？
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {children.map((c) => (
+                        <button
+                          key={c.id}
+                          onClick={() => {
+                            adoptTime(todo.id, c.id);
+                            setMigrate(null);
+                          }}
+                          className="rounded-md bg-amber-500 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-amber-600"
+                        >
+                          {c.text}
+                        </button>
+                      ))}
+                      <button
+                        onClick={() => setMigrate(null)}
+                        className="rounded-md px-2.5 py-1 text-xs text-amber-700 transition hover:bg-amber-100"
+                      >
+                        暂不迁移
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </li>
+            );
+          })
         )}
       </ul>
 
-      {todos.length > 0 && (
+      {roots.length > 0 && (
         <footer className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3 text-sm text-gray-500">
           <span>
-            剩余 {remaining} / {todos.length} 项
+            剩余 {remaining} / {roots.length} 项
           </span>
           {todos.some((t) => t.completed) && (
             <button

@@ -1,3 +1,4 @@
 package com.todo.todo.dto;
 
-public record TodoCreateRequest(String text) {}
+/** parentId 非空表示创建的是某个合集的子集。 */
+public record TodoCreateRequest(String text, String parentId) {}

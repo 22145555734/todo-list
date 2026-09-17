@@ -53,10 +53,10 @@ export const api = {
   listTodos() {
     return request<Todo[]>("/todos");
   },
-  createTodo(text: string) {
+  createTodo(text: string, parentId: string | null = null) {
     return request<Todo>("/todos", {
       method: "POST",
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, parentId }),
     });
   },
   updateTodo(id: string, patch: { text?: string; completed?: boolean }) {
@@ -88,5 +88,12 @@ export const api = {
   },
   resetTime(id: string) {
     return request<void>(`/todos/${id}/reset`, { method: "POST" });
+  },
+  /** 把合集已有的计时记录迁移到它的某个子集 */
+  adoptTime(containerId: string, targetId: string) {
+    return request<void>(`/todos/${containerId}/adopt-time`, {
+      method: "POST",
+      body: JSON.stringify({ targetId }),
+    });
   },
 };

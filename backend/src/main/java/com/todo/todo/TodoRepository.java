@@ -5,4 +5,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface TodoRepository extends JpaRepository<Todo, String> {
     List<Todo> findByUserIdOrderByCreatedAtAsc(Long userId);
+
+    List<Todo> findByUserIdAndParentId(Long userId, String parentId);
+
+    boolean existsByUserIdAndParentId(Long userId, String parentId);
 }
