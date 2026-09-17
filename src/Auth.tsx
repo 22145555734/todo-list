@@ -28,7 +28,7 @@ export default function Auth() {
         {mode === "login" ? "登录" : "注册"}
       </h1>
       <p className="mb-4 text-sm text-gray-500">
-        登录后，待办与计时数据保存在服务器，随时随地同步
+        待办清单，让时间有处可放；等级称号，让坚持有迹可循
       </p>
 
       <form onSubmit={submit} className="space-y-3">
