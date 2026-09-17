@@ -65,9 +65,6 @@ vi.mock("./api", () => {
         s.end === null && s.todoId === id ? { ...s, end } : s,
       );
     }),
-    resetTime: vi.fn(async (id: string) => {
-      sessions = sessions.filter((s) => s.todoId !== id);
-    }),
     adoptTime: vi.fn(async (containerId: string, targetId: string) => {
       const container = todos.find((t) => t.id === containerId);
       const target = todos.find((t) => t.id === targetId);
@@ -234,10 +231,6 @@ test("暂停计时", async () => {
 
   expect(
     await screen.findByRole("button", { name: "开始计时" }),
-  ).toBeInTheDocument();
-  // 有累计时长后出现清零按钮
-  expect(
-    await screen.findByRole("button", { name: "清零计时" }),
   ).toBeInTheDocument();
 });
 

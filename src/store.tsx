@@ -32,7 +32,6 @@ interface StoreValue {
   editTodo: (id: string, text: string) => Promise<void>;
   clearCompleted: () => Promise<void>;
   toggleTimer: (todoId: string) => Promise<void>;
-  resetTodoTime: (todoId: string) => Promise<void>;
   adoptTime: (containerId: string, targetId: string) => Promise<void>;
   /** 累计时长：合集为其自身记录与全部子集之和 */
   elapsedMs: (todoId: string, now: number) => number;
@@ -256,19 +255,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [runningTodoId, refreshSessions, handleError],
   );
 
-  const resetTodoTime = useCallback(
-    async (todoId: string) => {
-      setError(null);
-      try {
-        await api.resetTime(todoId);
-        await refreshSessions();
-      } catch (e) {
-        handleError(e);
-      }
-    },
-    [refreshSessions, handleError],
-  );
-
   const ownMs = useCallback(
     (todoId: string, now: number) => {
       let total = completedMsByTodo.get(todoId) ?? 0;
@@ -325,7 +311,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     editTodo,
     clearCompleted,
     toggleTimer,
-    resetTodoTime,
     adoptTime,
     elapsedMs,
   };

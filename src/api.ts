@@ -86,9 +86,6 @@ export const api = {
       body: JSON.stringify({ end }),
     });
   },
-  resetTime(id: string) {
-    return request<void>(`/todos/${id}/reset`, { method: "POST" });
-  },
   /** 把合集已有的计时记录迁移到它的某个子集 */
   adoptTime(containerId: string, targetId: string) {
     return request<void>(`/todos/${containerId}/adopt-time`, {

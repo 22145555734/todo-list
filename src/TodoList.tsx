@@ -26,7 +26,6 @@ interface TodoItemProps {
   onDelete: (id: string) => void;
   onEdit: (id: string, text: string) => void;
   onToggleTimer: (id: string) => void;
-  onReset: (id: string) => void;
   onAddChild: (id: string) => void;
 }
 
@@ -40,7 +39,6 @@ const TodoItem = memo(function TodoItem({
   onDelete,
   onEdit,
   onToggleTimer,
-  onReset,
   onAddChild,
 }: TodoItemProps) {
   const [editing, setEditing] = useState(false);
@@ -146,28 +144,16 @@ const TodoItem = memo(function TodoItem({
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {!isContainer && (
-            <>
-              <button
-                onClick={() => onToggleTimer(todo.id)}
-                className={`rounded-md px-3 py-1 text-sm font-medium text-white transition ${
-                  running
-                    ? "bg-amber-500 hover:bg-amber-600 active:bg-amber-700"
-                    : "bg-blue-500 hover:bg-blue-600 active:bg-blue-700"
-                }`}
-              >
-                {running ? "暂停" : "开始计时"}
-              </button>
-              {elapsed > 0 && (
-                <button
-                  onClick={() => onReset(todo.id)}
-                  className="rounded-md px-2 py-1 text-sm text-gray-400 transition hover:bg-gray-200 hover:text-gray-600"
-                  aria-label="清零计时"
-                  title="清零计时记录"
-                >
-                  清零
-                </button>
-              )}
-            </>
+            <button
+              onClick={() => onToggleTimer(todo.id)}
+              className={`rounded-md px-3 py-1 text-sm font-medium text-white transition ${
+                running
+                  ? "bg-amber-500 hover:bg-amber-600 active:bg-amber-700"
+                  : "bg-blue-500 hover:bg-blue-600 active:bg-blue-700"
+              }`}
+            >
+              {running ? "暂停" : "开始计时"}
+            </button>
           )}
           {!isChild && (
             <button
@@ -229,7 +215,6 @@ export default function TodoList() {
     editTodo,
     clearCompleted,
     toggleTimer,
-    resetTodoTime,
     adoptTime,
     elapsedMs,
   } = useStore();
@@ -343,7 +328,6 @@ export default function TodoList() {
                   onDelete={deleteTodo}
                   onEdit={editTodo}
                   onToggleTimer={toggleTimer}
-                  onReset={resetTodoTime}
                   onAddChild={openAddChild}
                 />
 
@@ -361,7 +345,6 @@ export default function TodoList() {
                           onDelete={deleteTodo}
                           onEdit={editTodo}
                           onToggleTimer={toggleTimer}
-                          onReset={resetTodoTime}
                           onAddChild={openAddChild}
                         />
                       </li>
