@@ -5,7 +5,8 @@ spring:
   datasource:
     url: ${DB_URL:jdbc:mysql://localhost:3306/todo?useSSL=false&serverTimezone=UTC&characterEncoding=utf8&allowPublicKeyRetrieval=true}
     username: ${DB_USERNAME:todo}
-    password: ${DB_PASSWORD:todo}
+    # 不设默认值：本仓库是公开的，写死的兜底密码等于公开凭据
+    password: ${DB_PASSWORD}
   jpa:
     hibernate:
       ddl-auto: update
@@ -16,5 +17,7 @@ spring:
 
 app:
   jwt:
-    secret: ${JWT_SECRET:todo-app-dev-secret-please-change-me-0123456789}
+    # 不设默认值：公开仓库里的兜底 JWT 密钥可被用来伪造任意用户的令牌。
+    # 缺失时启动即失败（fail-closed），这是刻意的。
+    secret: ${JWT_SECRET}
     expiration-ms: ${JWT_EXPIRATION_MS:2592000000}
