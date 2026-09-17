@@ -1,5 +1,6 @@
 package com.todo.session;
 
+import com.todo.session.dto.AdoptTimeRequest;
 import com.todo.session.dto.PauseRequest;
 import com.todo.session.dto.SessionDto;
 import com.todo.session.dto.StartRequest;
@@ -43,5 +44,11 @@ public class TimeSessionController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void reset(@PathVariable String id) {
         sessionService.reset(id);
+    }
+
+    @PostMapping("/todos/{id}/adopt-time")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void adoptTime(@PathVariable String id, @RequestBody AdoptTimeRequest req) {
+        sessionService.adoptTime(id, req);
     }
 }

@@ -19,6 +19,10 @@ public class Todo {
     @Column(nullable = false, length = 500)
     private String text;
 
+    /** 所属合集 id；null 表示顶层事项。只允许一层嵌套，故有 parentId 的事项本身不能再当合集。 */
+    @Column(length = 36)
+    private String parentId;
+
     @Column(nullable = false)
     private boolean completed;
 
@@ -30,10 +34,13 @@ public class Todo {
 
     public Todo() {}
 
-    public Todo(String id, Long userId, String text, boolean completed, Long createdAt, Long updatedAt) {
+    public Todo(
+            String id, Long userId, String text, String parentId,
+            boolean completed, Long createdAt, Long updatedAt) {
         this.id = id;
         this.userId = userId;
         this.text = text;
+        this.parentId = parentId;
         this.completed = completed;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
@@ -45,6 +52,8 @@ public class Todo {
     public void setUserId(Long userId) { this.userId = userId; }
     public String getText() { return text; }
     public void setText(String text) { this.text = text; }
+    public String getParentId() { return parentId; }
+    public void setParentId(String parentId) { this.parentId = parentId; }
     public boolean isCompleted() { return completed; }
     public void setCompleted(boolean completed) { this.completed = completed; }
     public Long getCreatedAt() { return createdAt; }

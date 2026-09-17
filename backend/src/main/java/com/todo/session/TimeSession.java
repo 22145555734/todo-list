@@ -24,6 +24,13 @@ public class TimeSession {
     @Column(nullable = false, length = 500)
     private String subject;
 
+    /**
+     * 开始计时时快照的所属合集名称；null 表示该会话不属于任何合集（顶层事项计时）。
+     * 统计页「合并子集」视图用它把子集时长归并回合集。
+     */
+    @Column(length = 500)
+    private String rootSubject;
+
     /** 开始时间戳（毫秒）。 */
     @Column(nullable = false)
     private long start;
@@ -33,11 +40,14 @@ public class TimeSession {
 
     public TimeSession() {}
 
-    public TimeSession(String id, Long userId, String todoId, String subject, long start, Long end) {
+    public TimeSession(
+            String id, Long userId, String todoId, String subject, String rootSubject,
+            long start, Long end) {
         this.id = id;
         this.userId = userId;
         this.todoId = todoId;
         this.subject = subject;
+        this.rootSubject = rootSubject;
         this.start = start;
         this.end = end;
     }
@@ -50,6 +60,8 @@ public class TimeSession {
     public void setTodoId(String todoId) { this.todoId = todoId; }
     public String getSubject() { return subject; }
     public void setSubject(String subject) { this.subject = subject; }
+    public String getRootSubject() { return rootSubject; }
+    public void setRootSubject(String rootSubject) { this.rootSubject = rootSubject; }
     public long getStart() { return start; }
     public void setStart(long start) { this.start = start; }
     public Long getEnd() { return end; }
