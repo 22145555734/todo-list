@@ -34,11 +34,11 @@ public class TimeSessionService {
     public SessionDto start(String todoId, StartRequest req) {
         Long uid = Auths.userId();
         Todo todo = owned(uid, todoId);
-        // 合集的时间来自各子集，本身不单独计时
+        // 合集的时间来自各子任务，本身不单独计时
         if (todo.getParentId() == null && todoRepository.existsByUserIdAndParentId(uid, todoId)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "合集请分别给子集计时");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "合集请分别给子任务计时");
         }
-        // 子集：快照合集名，统计页合并视图据此归并
+        // 子任务：快照合集名，统计页合并视图据此归并
         String rootSubject = null;
         if (todo.getParentId() != null) {
             rootSubject = todoRepository.findById(todo.getParentId())
@@ -57,14 +57,14 @@ public class TimeSessionService {
         return toDto(sessionRepository.save(ns));
     }
 
-    /** 把合集已有的计时记录整体迁移到它的某个子集下（迁移后按该子集统计）。 */
+    /** 把合集已有的计时记录整体迁移到它的某个子任务下（迁移后按该子任务统计）。 */
     @Transactional
     public void adoptTime(String containerId, AdoptTimeRequest req) {
         Long uid = Auths.userId();
         Todo container = owned(uid, containerId);
         Todo target = owned(uid, req.targetId());
         if (!containerId.equals(target.getParentId())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "目标事项不是该合集的子集");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "目标事项不是该合集的子任务");
         }
         for (TimeSession s : sessionRepository.findByUserIdAndTodoId(uid, containerId)) {
             s.setTodoId(target.getId());

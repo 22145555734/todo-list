@@ -24,9 +24,9 @@ interface TodoItemProps {
   todo: Todo;
   /** 本项自身正在计时 */
   running: boolean;
-  /** 子集数量，> 0 表示为合集（自身不再计时） */
+  /** 子任务数量，> 0 表示为合集（自身不再计时） */
   childCount: number;
-  /** 合集中正在计时的子集名，无则为 null */
+  /** 合集中正在计时的子任务名，无则为 null */
   childRunningName: string | null;
   elapsedMs: (todoId: string, now: number) => number;
   onToggle: (id: string) => void;
@@ -35,6 +35,9 @@ interface TodoItemProps {
   onEdit: (id: string, text: string) => void;
   onToggleTimer: (id: string) => void;
   onAddChild: (id: string) => void;
+  /** 子任务列表是否已收起（只对合集有意义） */
+  collapsed: boolean;
+  onToggleCollapse: (id: string) => void;
 }
 
 const TodoItem = memo(function TodoItem({
@@ -48,6 +51,8 @@ const TodoItem = memo(function TodoItem({
   onEdit,
   onToggleTimer,
   onAddChild,
+  collapsed,
+  onToggleCollapse,
 }: TodoItemProps) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState("");
@@ -56,7 +61,7 @@ const TodoItem = memo(function TodoItem({
   const isChild = todo.parentId !== null;
   const ticking = running || childRunningName !== null;
 
-  // 仅当本项（或其子集）正在计时时才每秒 tick，避免整个列表跟着重渲染
+  // 仅当本项（或其子任务）正在计时时才每秒 tick，避免整个列表跟着重渲染
   const now = useNow(ticking);
   const elapsed = elapsedMs(todo.id, now);
   const info = getLevelInfo(elapsed);
@@ -146,7 +151,7 @@ const TodoItem = memo(function TodoItem({
             <span className="truncate text-xs text-gray-500">
               {childRunningName
                 ? `正在计时：${childRunningName}`
-                : `${childCount} 个子集`}
+                : `${childCount} 个子任务`}
             </span>
           )}
         </div>
@@ -167,16 +172,26 @@ const TodoItem = memo(function TodoItem({
             <button
               onClick={() => onAddChild(todo.id)}
               className="rounded-md px-2 py-1 text-sm text-blue-500 transition hover:bg-blue-50 hover:text-blue-600"
-              aria-label="添加子集"
-              title="把这项变成一个合集，给它的子集分别计时"
+              aria-label="添加子任务"
+              title="把这项变成一个合集，给它的子任务分别计时"
             >
-              + 子集
+              + 子任务
+            </button>
+          )}
+          {/* 子任务多起来会把列表撑得很长，留给用户一个收起来的开关 */}
+          {isContainer && (
+            <button
+              onClick={() => onToggleCollapse(todo.id)}
+              aria-expanded={!collapsed}
+              className="rounded-md px-2 py-1 text-sm text-gray-500 transition hover:bg-gray-200 hover:text-gray-700"
+            >
+              {collapsed ? "展开" : "收起"}
             </button>
           )}
         </div>
       </div>
 
-      {/* 等级 / 称号：合集按各子集累加的总时长计算，子集没有 */}
+      {/* 等级 / 称号：合集按各子任务累加的总时长计算，子任务没有 */}
       {!isChild && (
         <div className="mt-2 border-t border-gray-100 pt-2">
           <div className="mb-1.5 flex items-center justify-between">
@@ -208,7 +223,7 @@ const TodoItem = memo(function TodoItem({
 
 /**
  * 删除二次确认弹窗。
- * 只问「删不删」——事项名、子集数这些点按钮时本来就知道，不占版面。
+ * 只问「删不删」——事项名、子任务数这些点按钮时本来就知道，不占版面。
  */
 function DeleteConfirm({
   onConfirm,
@@ -269,7 +284,7 @@ function DeleteConfirm({
   );
 }
 
-/** 新建子集后，若合集本身还留着计时记录，提示迁到某个子集下 */
+/** 新建子任务后，若合集本身还留着计时记录，提示迁到某个子任务下 */
 interface MigrateHint {
   containerId: string;
   ms: number;
@@ -296,6 +311,8 @@ export default function TodoList() {
   const [childInput, setChildInput] = useState("");
   const [migrate, setMigrate] = useState<MigrateHint | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  // 已收起的合集 id。默认全展开——加子任务本就是为了给它们计时，不该被折叠挡住
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -306,6 +323,22 @@ export default function TodoList() {
   const openAddChild = useCallback((id: string) => {
     setAddingChildFor(id);
     setChildInput("");
+    // 收起状态下点「+ 子任务」要自动展开，否则刚加的子任务看不见
+    setCollapsedIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }, []);
+
+  const toggleCollapse = useCallback((id: string) => {
+    setCollapsedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }, []);
 
   // 删除走二次确认：先记住待删 id，确认后才真正调用 deleteTodo
@@ -355,7 +388,7 @@ export default function TodoList() {
     <div className="mx-auto w-full max-w-md rounded-xl bg-white p-6 shadow-lg">
       <h1 className="mb-1 text-2xl font-bold text-gray-800">待办事项</h1>
       <p className="mb-4 text-sm text-gray-500">
-        每个事项可独立计时；给事项加上子集后，它的时长由各子集累加
+        每个事项可独立计时；给事项加上子任务后，它的时长由各子任务累加
       </p>
 
       <form onSubmit={submit} className="mb-4 flex gap-2">
@@ -413,9 +446,11 @@ export default function TodoList() {
                   onEdit={editTodo}
                   onToggleTimer={toggleTimer}
                   onAddChild={openAddChild}
+                  collapsed={collapsedIds.has(todo.id)}
+                  onToggleCollapse={toggleCollapse}
                 />
 
-                {children.length > 0 && (
+                {children.length > 0 && !collapsedIds.has(todo.id) && (
                   <ul className="ml-3 mt-2 space-y-2 border-l-2 border-blue-100 pl-3">
                     {children.map((c) => (
                       <li key={c.id}>
@@ -430,6 +465,8 @@ export default function TodoList() {
                           onEdit={editTodo}
                           onToggleTimer={toggleTimer}
                           onAddChild={openAddChild}
+                          collapsed={false}
+                          onToggleCollapse={toggleCollapse}
                         />
                       </li>
                     ))}
@@ -448,7 +485,7 @@ export default function TodoList() {
                       onKeyDown={(e) => {
                         if (e.key === "Escape") setAddingChildFor(null);
                       }}
-                      placeholder="添加子集..."
+                      placeholder="添加子任务..."
                       autoFocus
                       className="flex-1 rounded-lg border border-blue-300 px-3 py-1.5 text-sm text-gray-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                     />
@@ -472,7 +509,7 @@ export default function TodoList() {
                   <div className="ml-3 mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
                     <p className="mb-2 text-xs text-amber-800">
                       「{todo.text}」原有 {formatShort(migrate.ms)} 记录，
-                      迁到哪个子集？
+                      迁到哪个子任务？
                     </p>
                     <div className="flex flex-wrap gap-1.5">
                       {children.map((c) => (

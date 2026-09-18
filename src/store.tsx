@@ -24,7 +24,7 @@ interface StoreValue {
   todos: Todo[];
   sessions: TimeSession[];
   runningTodoId: string | null;
-  /** 某合集的子集列表（无子集时返回稳定的空数组） */
+  /** 某合集的子任务列表（无子任务时返回稳定的空数组） */
   childrenOf: (parentId: string) => Todo[];
   addTodo: (text: string, parentId?: string | null) => Promise<void>;
   toggleTodo: (id: string) => Promise<void>;
@@ -33,7 +33,7 @@ interface StoreValue {
   clearCompleted: () => Promise<void>;
   toggleTimer: (todoId: string) => Promise<void>;
   adoptTime: (containerId: string, targetId: string) => Promise<void>;
-  /** 累计时长：合集为其自身记录与全部子集之和 */
+  /** 累计时长：合集为其自身记录与全部子任务之和 */
   elapsedMs: (todoId: string, now: number) => number;
 }
 
@@ -218,7 +218,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setError(null);
       try {
         await api.deleteTodo(id);
-        // 删除合集会级联删掉它的子集
+        // 删除合集会级联删掉它的子任务
         setTodos((prev) => prev.filter((x) => x.id !== id && x.parentId !== id));
         await refreshSessions();
       } catch (e) {
@@ -279,7 +279,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [refreshSessions, handleError],
   );
 
-  // 合集的总时长 = 自身残留记录 + 各子集之和
+  // 合集的总时长 = 自身残留记录 + 各子任务之和
   const elapsedMs = useCallback(
     (todoId: string, now: number) => {
       let total = ownMs(todoId, now);
