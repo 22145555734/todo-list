@@ -117,9 +117,9 @@ test("1 级完全不动、满级走彩虹，都不参与本档炫动", () => {
   expect(levelShimmer(499)).not.toBeNull();
 });
 
-test("炫动速度随等级递增，499 级是满级新速度的 0.8 倍", () => {
-  // 满级 1.5 周期/秒，499 级 = 1.5 × 0.8 = 1.2 周期/秒 → 时长 1/1.2
-  expect(levelShimmer(499)!.durationS).toBeCloseTo(1 / 1.2, 6);
+test("炫动速度随等级递增，499 级是满级速度的 0.7 倍", () => {
+  // 满级 1.2 周期/秒，499 级 = 1.2 × 0.7 = 0.84 周期/秒 → 时长 1/0.84
+  expect(levelShimmer(499)!.durationS).toBeCloseTo(1 / 0.84, 6);
   for (const lv of [2, 50, 151, 250, 400, 498]) {
     expect(levelShimmer(lv + 1)!.durationS).toBeLessThan(levelShimmer(lv)!.durationS);
   }
