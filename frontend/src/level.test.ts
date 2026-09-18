@@ -77,14 +77,14 @@ test("文字色是底色加深版（白底可读）", () => {
   expect(tb).toBeLessThan(bb);
 });
 
-test("新手档用页面默认字体（不改 font-family）", () => {
-  expect(levelFont(1).family).toBeNull();
-  expect(levelFont(50).family).toBeNull();
+test("新手档称号用页面默认字体（不改 font-family）", () => {
+  expect(levelFont(1).titleFamily).toBeNull();
+  expect(levelFont(50).titleFamily).toBeNull();
 });
 
-test("字体四档递进：新手默认 → 霞鹜文楷 → 马善政 → 云峰飞云体", () => {
-  // 各档的 family 都带后备字体，所以断言首选项而非包含关系
-  const first = (lv: number) => levelFont(lv).family?.split(",")[0].trim();
+test("称号字体四档递进：新手默认 → 霞鹜文楷 → 马善政 → 云峰飞云体", () => {
+  // 各档的 titleFamily 都带后备字体，所以断言首选项而非包含关系
+  const first = (lv: number) => levelFont(lv).titleFamily?.split(",")[0].trim();
   expect(first(51)).toBe('"LevelKai"');
   expect(first(400)).toBe('"LevelKai"');
   expect(first(401)).toBe('"LevelTaidou"');

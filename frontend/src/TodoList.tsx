@@ -221,8 +221,8 @@ const TodoItem = memo(function TodoItem({
                   isMaxLevel ? "rainbow-bg" : ""
                 }`}
                 style={{
+                  // 徽章刻意不设 font-family：数字和 "Lv." 用艺术字体不好认
                   fontSize: `${font.badgeSize}px`,
-                  ...(font.family ? { fontFamily: font.family } : {}),
                   ...(isMaxLevel ? {} : { backgroundColor: badgeColor }),
                 }}
               >
@@ -232,7 +232,7 @@ const TodoItem = memo(function TodoItem({
                 className={`font-semibold ${isMaxLevel ? "rainbow-text" : ""}`}
                 style={{
                   fontSize: `${font.titleSize}px`,
-                  ...(font.family ? { fontFamily: font.family } : {}),
+                  ...(font.titleFamily ? { fontFamily: font.titleFamily } : {}),
                   ...(isMaxLevel ? {} : { color: titleColor }),
                 }}
               >
