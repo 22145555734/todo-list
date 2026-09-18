@@ -82,11 +82,14 @@ test("新手档用页面默认字体（不改 font-family）", () => {
   expect(levelFont(50).family).toBeNull();
 });
 
-test("字体三档递进：新手默认 → 楷体 → 得意黑", () => {
-  expect(levelFont(51).family).toContain("LevelKai");
-  expect(levelFont(400).family).toContain("LevelKai");
-  expect(levelFont(401).family).toContain("LevelSmiley");
-  expect(levelFont(MAX_LEVEL).family).toContain("LevelSmiley");
+test("字体四档递进：新手默认 → 霞鹜文楷 → 马善政 → 云峰飞云体", () => {
+  // 各档的 family 都带后备字体，所以断言首选项而非包含关系
+  const first = (lv: number) => levelFont(lv).family?.split(",")[0].trim();
+  expect(first(51)).toBe('"LevelKai"');
+  expect(first(400)).toBe('"LevelKai"');
+  expect(first(401)).toBe('"LevelTaidou"');
+  expect(first(499)).toBe('"LevelTaidou"');
+  expect(first(MAX_LEVEL)).toBe('"LevelPeak"');
 });
 
 test("字号随等级单调递增，1 级为 12/14，满级为 17/26", () => {

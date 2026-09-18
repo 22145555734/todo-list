@@ -2,9 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 等级称号字体：只嵌入用到的 35 个字符（各称号 + "Lv." + 数字），两个字共约 15KB。
-   两个字均为 OFL 开源字体，许可证见 src/assets/fonts/OFL-*.txt。
-   新手档不使用这两个字体，走页面默认字体（见 level.ts 的 levelFont）。 */
+/* 等级称号字体，按等级分档（档位划分见 level.ts 的 levelFont）：
+   LevelKai（霞鹜文楷，51~400 级）与 LevelTaidou（马善政毛笔楷书，401~499 级）
+   都是 OFL 开源字体，各只嵌入用到的 35 个字符（所有称号 + "Lv." + 数字），
+   共约 21KB，许可证见 src/assets/fonts/OFL-*.txt。
+
+   LevelPeak（云峰飞云体，满级）授权不允许修改字体，因此整包原样引入、不做子集，
+   体积 7.56MB，授权说明见 src/assets/fonts/授权说明-云峰飞云体.txt。
+   它只在 500 级的称号/徽章上被引用，浏览器按需下载（@font-face 不会预取），
+   低等级用户不会触发这笔流量；nginx 另开了 gzip，实测传输 4.74MB。
+
+   新手档（1~50 级）不使用任何自定义字体，走页面默认字体。 */
 @font-face {
   font-family: "LevelKai";
   src: url("./assets/fonts/wenkai-subset.woff2") format("woff2");
@@ -14,8 +22,16 @@
 }
 
 @font-face {
-  font-family: "LevelSmiley";
-  src: url("./assets/fonts/smiley-subset.woff2") format("woff2");
+  font-family: "LevelTaidou";
+  src: url("./assets/fonts/mashan-subset.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "LevelPeak";
+  src: url("./assets/fonts/yunfeng-feiyun.ttf") format("truetype");
   font-weight: 400;
   font-style: normal;
   font-display: swap;

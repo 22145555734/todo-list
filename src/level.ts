@@ -142,12 +142,16 @@ export function levelColorText(level: number): string {
   return `rgb(${Math.round(r * 0.72)}, ${Math.round(g * 0.72)}, ${Math.round(b * 0.72)})`;
 }
 
-// 等级字体：字号随等级线性放大，字体分三档递进 ——
-// 新手（1~50）用页面默认字体，51 级起换楷体，401 级起换得意黑（斜体，更有冲劲）。
-// 两个字均为 OFL 开源字体，只嵌入用到的 35 个字符（所有称号 + "Lv." + 数字），
-// 共约 15KB，@font-face 见 index.css。系统字体名作后备，字体未加载时也能显示。
+// 等级字体：字号随等级线性放大，字体分四档递进 ——
+// 新手（1~50）用页面默认字体，51 级起换霞鹜文楷，401 级起换马善政毛笔楷书，
+// 满级（500）换云峰飞云体。前两档是 OFL 开源字体，只嵌入用到的 35 个字符
+// （所有称号 + "Lv." + 数字），共约 21KB，可自由子集化。
+// 满级那档的授权不允许修改字体，因此整包原样引入、不做子集（7.56MB）——
+// 它只在 500 级的称号/徽章上被引用，浏览器按需下载，低等级用户不会触发。
+// @font-face 见 index.css。系统字体名作后备，字体未加载时也能显示。
 const FONT_KAI = '"LevelKai", "KaiTi", "STKaiti", serif';
-const FONT_SMILEY = '"LevelSmiley", "LevelKai", "KaiTi", sans-serif';
+const FONT_TAIDOU = '"LevelTaidou", "LevelKai", "KaiTi", serif';
+const FONT_PEAK = '"LevelPeak", "LevelTaidou", "LevelKai", "KaiTi", serif';
 
 export interface LevelFont {
   /** 徽章「Lv.N」的字号（px） */
@@ -165,6 +169,7 @@ export function levelFont(level: number): LevelFont {
   return {
     badgeSize: 12 + t * 5, // 12 → 17
     titleSize: 14 + t * 12, // 14 → 26
-    family: lv > 400 ? FONT_SMILEY : lv > 50 ? FONT_KAI : null,
+    family:
+      lv >= MAX_LEVEL ? FONT_PEAK : lv > 400 ? FONT_TAIDOU : lv > 50 ? FONT_KAI : null,
   };
 }
