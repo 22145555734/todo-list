@@ -49,7 +49,7 @@ services:
     container_name: todo-app
     restart: unless-stopped
     build:
-      context: .
+      context: ./frontend
     ports:
       - "8310:80"
     depends_on:
