@@ -138,9 +138,7 @@ test("点删除只弹确认框，确认后才真删", async () => {
 
   // 弹窗已弹出，但此时事项还在
   expect(screen.getByRole("alertdialog")).toBeInTheDocument();
-  expect(
-    screen.getByText("删除后不可恢复，已记录的计时时长会保留在统计中。"),
-  ).toBeInTheDocument();
+  expect(screen.getByText("删除后不可恢复。")).toBeInTheDocument();
   expect(screen.getByText("任务")).toBeInTheDocument();
 
   await user.click(screen.getByRole("button", { name: "删除" }));

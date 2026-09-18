@@ -247,14 +247,14 @@ function DeleteConfirm({
           id="delete-confirm-title"
           className="break-all text-base font-bold text-gray-800"
         >
-          删除「{todo.text}」？
+          确定删除「{todo.text}」吗？
         </h2>
         <p
           id="delete-confirm-desc"
           className="mt-2 text-sm leading-relaxed text-gray-600"
         >
           {childCount > 0 && `它的 ${childCount} 个子集也会一起删除。`}
-          删除后不可恢复，已记录的计时时长会保留在统计中。
+          删除后不可恢复。
         </p>
         <div className="mt-4 flex justify-end gap-2">
           {/* 默认焦点给「取消」，避免一路回车误删 */}
