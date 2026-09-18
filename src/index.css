@@ -2,6 +2,25 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 等级称号字体：只嵌入用到的 35 个字符（各称号 + "Lv." + 数字），两个字共约 15KB。
+   两个字均为 OFL 开源字体，许可证见 src/assets/fonts/OFL-*.txt。
+   新手档不使用这两个字体，走页面默认字体（见 level.ts 的 levelFont）。 */
+@font-face {
+  font-family: "LevelKai";
+  src: url("./assets/fonts/wenkai-subset.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "LevelSmiley";
+  src: url("./assets/fonts/smiley-subset.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* 数据可视化调色板（浅色主题）。颜色槽按验证通过的顺序固定分配，
    柱状图/图例/表格通过 var(--series-N) 引用，实现“颜色跟随科目而非排名”。
    如需深色主题，可在此处用 prefers-color-scheme / data-theme 覆盖这些变量。 */

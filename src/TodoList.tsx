@@ -11,7 +11,7 @@ import {
 import { useStore } from "./store";
 import { useNow } from "./useNow";
 import { formatHms, formatShort } from "./time";
-import { getLevelInfo, levelColor, levelColorText } from "./level";
+import { getLevelInfo, levelColor, levelColorText, levelFont } from "./level";
 import type { Todo } from "./types";
 
 type Filter = "all" | "active" | "completed";
@@ -70,6 +70,7 @@ const TodoItem = memo(function TodoItem({
   const isMaxLevel = info.nextLevel === null;
   const badgeColor = isMaxLevel ? "" : levelColor(info.level);
   const titleColor = isMaxLevel ? "" : levelColorText(info.level);
+  const font = levelFont(info.level);
 
   const startEdit = () => {
     setEditing(true);
@@ -216,18 +217,24 @@ const TodoItem = memo(function TodoItem({
           <div className="mb-1.5 flex items-center justify-between">
             <span className="flex items-center gap-2">
               <span
-                className={`rounded-md px-2 py-0.5 text-xs font-bold leading-none text-white ${
+                className={`rounded-md px-2 py-0.5 font-bold leading-none text-white ${
                   isMaxLevel ? "rainbow-bg" : ""
                 }`}
-                style={isMaxLevel ? undefined : { backgroundColor: badgeColor }}
+                style={{
+                  fontSize: `${font.badgeSize}px`,
+                  ...(font.family ? { fontFamily: font.family } : {}),
+                  ...(isMaxLevel ? {} : { backgroundColor: badgeColor }),
+                }}
               >
                 Lv.{info.level}
               </span>
               <span
-                className={`text-sm font-semibold ${
-                  isMaxLevel ? "rainbow-text" : ""
-                }`}
-                style={isMaxLevel ? undefined : { color: titleColor }}
+                className={`font-semibold ${isMaxLevel ? "rainbow-text" : ""}`}
+                style={{
+                  fontSize: `${font.titleSize}px`,
+                  ...(font.family ? { fontFamily: font.family } : {}),
+                  ...(isMaxLevel ? {} : { color: titleColor }),
+                }}
               >
                 {info.title}
               </span>
