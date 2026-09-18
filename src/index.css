@@ -28,7 +28,7 @@
    T7 内核（Chromium 97）支持 background-clip:text 与 keyframes，不受 Tailwind v3 约束影响。 */
 .rainbow-bg {
   background: linear-gradient(
-    45deg,
+    90deg,
     #ef4444,
     #f97316,
     #eab308,
@@ -37,13 +37,13 @@
     #a855f7,
     #ef4444
   );
-  background-size: 200% 200%;
-  animation: rainbow-shift 2s linear infinite;
+  background-size: 200% 100%;
+  animation: rainbow-shift 1.333s linear infinite;
 }
 
 .rainbow-text {
   background: linear-gradient(
-    45deg,
+    90deg,
     #ef4444,
     #f97316,
     #eab308,
@@ -52,11 +52,11 @@
     #a855f7,
     #ef4444
   );
-  background-size: 200% 200%;
+  background-size: 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: rainbow-shift 2s linear infinite;
+  animation: rainbow-shift 1.333s linear infinite;
 }
 
 @keyframes rainbow-shift {
@@ -64,8 +64,7 @@
     background-position: 0% 0%;
   }
   100% {
-    /* 右上流动：x 取负（向右）+ y 取正（向上），各位移一个 background-size
-       平铺周期（200% 宽 / 200% 高），首尾帧图案相同，循环无缝 */
-    background-position: -200% 200%;
+    /* 水平向右：x 取负（向右）位移一个平铺周期（200% 宽），首尾帧图案相同，循环无缝 */
+    background-position: -200% 0%;
   }
 }
