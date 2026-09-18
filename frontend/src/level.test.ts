@@ -2,7 +2,6 @@ import {
   cumulativeMinutes,
   getLevelInfo,
   levelColor,
-  levelColorText,
   levelFont,
   levelMinutes,
   levelShimmer,
@@ -63,22 +62,6 @@ test("等级主题色相邻两级都不同（连续渐变）", () => {
   }
 });
 
-test("文字色是底色加深版（白底可读）", () => {
-  const base = levelColor(250);
-  const text = levelColorText(250);
-  const [br, bg, bb] = base
-    .slice(4, -1)
-    .split(",")
-    .map((n) => Number(n.trim()));
-  const [tr, tg, tb] = text
-    .slice(4, -1)
-    .split(",")
-    .map((n) => Number(n.trim()));
-  expect(tr).toBeLessThan(br);
-  expect(tg).toBeLessThan(bg);
-  expect(tb).toBeLessThan(bb);
-});
-
 test("新手档称号用页面默认字体（不改 font-family）", () => {
   expect(levelFont(1).titleFamily).toBeNull();
   expect(levelFont(50).titleFamily).toBeNull();
@@ -110,17 +93,19 @@ test("称号字体一档一款：51 级起每档换一款，满级是云峰飞�
   expect(new Set(used).size).toBe(used.length);
 });
 
-test("1 级完全不动、满级走彩虹，都不参与本档炫动", () => {
-  expect(levelShimmer(1)).toBeNull();
+test("只有满级不参与本档炫动（它走整条彩虹）", () => {
   expect(levelShimmer(MAX_LEVEL)).toBeNull();
-  expect(levelShimmer(2)).not.toBeNull();
-  expect(levelShimmer(499)).not.toBeNull();
+  // 1 级自第十七期起也有炫动，不再返回 null
+  for (const lv of [1, 2, 250, 499]) expect(levelShimmer(lv)).not.toBeNull();
 });
 
-test("炫动速度随等级递增，499 级是满级速度的 0.7 倍", () => {
-  // 满级 1.2 周期/秒，499 级 = 1.2 × 0.7 = 0.84 周期/秒 → 时长 1/0.84
-  expect(levelShimmer(499)!.durationS).toBeCloseTo(1 / 0.84, 6);
-  for (const lv of [2, 50, 151, 250, 400, 498]) {
+test("速度两端点就是用户给的秒数：1 级 20s、499 级 1.145s", () => {
+  expect(levelShimmer(1)!.durationS).toBeCloseTo(20, 9);
+  expect(levelShimmer(499)!.durationS).toBeCloseTo(1.145, 9);
+});
+
+test("炫动周期随等级逐级变短（速度递增）", () => {
+  for (const lv of [1, 2, 50, 151, 250, 400, 498]) {
     expect(levelShimmer(lv + 1)!.durationS).toBeLessThan(levelShimmer(lv)!.durationS);
   }
 });

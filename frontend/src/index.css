@@ -194,7 +194,8 @@
 
 /* 满级（500 级）炫彩：彩虹渐变 + 背景位置动画，首尾同色形成无缝循环。
    T7 内核（Chromium 97）支持 background-clip:text 与 keyframes，不受 Tailwind v3 约束影响。
-   时长 0.833s = 1 ÷ 1.2，见 level.ts 的 PEAK_CYCLES_PER_SEC（第十五期曾是 0.667s）。 */
+   时长 0.833s = 1 ÷ 1.2 周期/秒。**1.2 这个数只写在这里** —— level.ts 自第十七期起只管
+   1~499 级，满级速度不再参与它的插值，别再去那边找（第十五期曾是 0.667s）。 */
 .rainbow-bg {
   background: linear-gradient(
     90deg,
@@ -230,7 +231,8 @@
 
 /* 1~499 级：在自己的色域内向右流动。渐变的颜色按等级在 level.ts 里算好、写在行内
    background-image 上（每级色域不同，写不进样式表），时长同理走行内 animationDuration
-   —— 这里的 1s 只是个兜底默认值。1 级不套这两个类，保持纯色不动。 */
+   —— 这里的 1s 只是个兜底默认值。**除了满级，1~499 级全都会套这两个类**
+   （1 级自第十七期起也有炫动，20 秒一圈）。 */
 .shimmer-bg,
 .shimmer-text {
   background-size: 200% 100%;

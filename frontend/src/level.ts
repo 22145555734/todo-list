@@ -148,21 +148,21 @@ export function levelColor(level: number): string {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
-/** 等级主题色的加深版（称号文字用）：绿/金等亮色直接当文字在白底上对比度不足 */
-export function levelColorText(level: number): string {
-  const [r, g, b] = levelRgb(level);
-  return `rgb(${Math.round(r * 0.72)}, ${Math.round(g * 0.72)}, ${Math.round(b * 0.72)})`;
-}
-
-// 等级炫动：1~499 级在**自己的色域内**向右流动，速度随等级线性递增；1 级完全不动，
-// 500 级走整条彩虹（`.rainbow-*` 类，见 index.css）。
-// 「速度」以每秒跑完几个渐变周期计。两次调整的账：
-//   满级：第十期起 1.0 → 第十五期 ×1.5 = 1.5 → 本期再 ×0.8 = 1.2
-//   499 级：第十五期 = 满级 × 0.8 = 1.2 → 本期再 ×0.7 = 0.84
-// 本期两个数正好仍满足「499 = 0.7 × 满级」（0.84 / 1.2 = 0.7）。
-// 中间的 2~498 级在 0（1 级）与 499 级之间按等级线性插值。
-const PEAK_CYCLES_PER_SEC = 1.2;
-const LV499_CYCLES_PER_SEC = PEAK_CYCLES_PER_SEC * 0.7; // 0.84
+// 等级炫动：1~499 级在**自己的色域内**向右流动，速度随等级线性递增；500 级走整条彩虹
+// （`.rainbow-*` 类，1.2 周期/秒 = 0.833s，那个值定义在 index.css 里，本文件不参与）。
+//
+// 「速度」以每秒跑完几个渐变周期计。两端点由用户直接钉死，中间按等级线性插值：
+//   1 级   ：20 秒一圈（0.05 周期/秒）—— 本期之前是「完全不动」，用户要求给一档可见的慢速
+//   499 级：1.145 秒一圈（≈0.8734 周期/秒）—— 用户直接给的秒数
+// 端点的历史账（只看 1 级与 499 级，满级那 1.2 没动）：
+//   第十五期：1 级 0（不动），499 级 1.2 周期/秒 = 0.83s
+//   第十六期：1 级 0，499 级 ×0.7 = 0.84 周期/秒 = 1.19s
+//   本期    ：改为用户直接给的秒数，且 1 级不再是 0
+//
+// 注意速度是**线性**插值而非周期线性：两者只在端点相同，中段能差到 5 倍
+// （250 级：速度线性 2.17s vs 周期线性 10.57s）。用户看过这组对比后选的速度线性。
+const LV1_CYCLES_PER_SEC = 1 / 20; // 0.05
+const LV499_CYCLES_PER_SEC = 1 / 1.145; // ≈ 0.8734
 
 /** 炫动幅度：色相左右各偏这么多度、明度上下各偏这么多个百分点 —— 即「保持在自己的色域附近」 */
 const SHIMMER_HUE_DEG = 8;
@@ -209,18 +209,22 @@ export interface LevelShimmer {
 }
 
 /**
- * 1~499 级的炫动参数。1 级返回 null（完全不动），500 级也返回 null
- * （满级走整条彩虹的 `.rainbow-*`，是另一套样式）。
+ * 1~499 级的炫动参数。**只有满级返回 null** —— 500 级走整条彩虹的 `.rainbow-*`，
+ * 是另一套样式，不参与本档炫动。
  */
 export function levelShimmer(level: number): LevelShimmer | null {
   const lv = Math.min(Math.max(level, 1), MAX_LEVEL);
-  if (lv === 1 || lv === MAX_LEVEL) return null;
+  if (lv === MAX_LEVEL) return null;
   const [r, g, b] = levelRgb(lv);
+  // 速度在两端点之间按等级线性插值：1 级取到 0（= LV1），499 级取到 1（= LV499）
+  const cyclesPerSec =
+    LV1_CYCLES_PER_SEC +
+    ((lv - 1) / (MAX_LEVEL - 2)) * (LV499_CYCLES_PER_SEC - LV1_CYCLES_PER_SEC);
   return {
     badgeImage: shimmerGradient([r, g, b]),
     titleImage: shimmerGradient([r, g, b].map((c) => Math.round(c * 0.72)) as [number, number, number]),
-    // 速度 = (lv-1)/498 × 1.2 周期/秒，故时长是它的倒数
-    durationS: (MAX_LEVEL - 2) / ((lv - 1) * LV499_CYCLES_PER_SEC),
+    // 时长是速度的倒数
+    durationS: 1 / cyclesPerSec,
   };
 }
 
