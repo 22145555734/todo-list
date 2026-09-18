@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import TodoList from "./TodoList";
 import { StoreProvider } from "./store";
-import { __reset } from "./api";
+import { __reset, __seed } from "./api";
 import type { TimeSession, Todo } from "./types";
 
 vi.mock("./api", () => {
@@ -87,6 +87,11 @@ vi.mock("./api", () => {
       todos = [];
       sessions = [];
       seq = 0;
+    },
+    // 直接铺好数据再挂载：等级由累计时长决定，攒到满级只能靠预置会话
+    __seed: (seededTodos: Todo[], seededSessions: TimeSession[]) => {
+      todos = seededTodos;
+      sessions = seededSessions;
     },
   };
 });
@@ -349,6 +354,33 @@ test("删除合集会连子任务一起删掉", async () => {
     expect(screen.queryByText("408")).not.toBeInTheDocument(),
   );
   expect(screen.queryByText("操作系统")).not.toBeInTheDocument();
+});
+
+test("徽章「Lv.N」走页面默认字体，艺术字体只给称号", async () => {
+  // 攒满 500 小时 → 满级，称号那一档正是云峰飞云体
+  const FIVE_HUNDRED_HOURS = 500 * 60 * 60 * 1000;
+  localStorage.setItem("todo-token", "test-token"); // 有 token 才会去拉数据
+  __seed(
+    [{ id: "t1", text: "数学", completed: false, parentId: null }],
+    [
+      {
+        id: "s1",
+        todoId: "t1",
+        subject: "数学",
+        rootSubject: null,
+        start: 0,
+        end: FIVE_HUNDRED_HOURS,
+      },
+    ],
+  );
+  renderTodoList();
+
+  const badge = await screen.findByText("Lv.500");
+  const title = screen.getByText("登峰造极");
+
+  // 徽章设了 font-family 就算回归 —— 数字和 "Lv." 该用默认字体
+  expect(badge.style.fontFamily).toBe("");
+  expect(title.style.fontFamily).toContain("LevelPeak");
 });
 
 test("加子任务时提示迁移合集已有的计时", async () => {
