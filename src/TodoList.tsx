@@ -1,4 +1,11 @@
-import { memo, useCallback, useMemo, useState, type FormEvent } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from "react";
 import { useStore } from "./store";
 import { useNow } from "./useNow";
 import { formatHms, formatShort } from "./time";
@@ -23,7 +30,8 @@ interface TodoItemProps {
   childRunningName: string | null;
   elapsedMs: (todoId: string, now: number) => number;
   onToggle: (id: string) => void;
-  onDelete: (id: string) => void;
+  /** 请求删除：不直接删，先弹二次确认 */
+  onRequestDelete: (todo: Todo) => void;
   onEdit: (id: string, text: string) => void;
   onToggleTimer: (id: string) => void;
   onAddChild: (id: string) => void;
@@ -36,7 +44,7 @@ const TodoItem = memo(function TodoItem({
   childRunningName,
   elapsedMs,
   onToggle,
-  onDelete,
+  onRequestDelete,
   onEdit,
   onToggleTimer,
   onAddChild,
@@ -112,7 +120,7 @@ const TodoItem = memo(function TodoItem({
             编辑
           </button>
           <button
-            onClick={() => onDelete(todo.id)}
+            onClick={() => onRequestDelete(todo)}
             className="rounded-md px-2 py-1 text-sm text-red-500 transition hover:bg-red-50 hover:text-red-600"
             aria-label="删除任务"
           >
@@ -198,6 +206,69 @@ const TodoItem = memo(function TodoItem({
   );
 });
 
+/**
+ * 删除二次确认弹窗。
+ * 只问「删不删」——事项名、子集数这些点按钮时本来就知道，不占版面。
+ */
+function DeleteConfirm({
+  onConfirm,
+  onCancel,
+}: {
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+
+  return (
+    // 点遮罩等同取消
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={onCancel}
+    >
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="delete-confirm-title"
+        aria-describedby="delete-confirm-desc"
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl"
+      >
+        <h2
+          id="delete-confirm-title"
+          className="text-base font-bold text-gray-800"
+        >
+          确定删除吗？
+        </h2>
+        <p id="delete-confirm-desc" className="mt-2 text-sm text-gray-600">
+          删除后不可恢复。
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          {/* 默认焦点给「取消」，避免一路回车误删 */}
+          <button
+            autoFocus
+            onClick={onCancel}
+            className="rounded-lg px-3 py-1.5 text-sm text-gray-600 transition hover:bg-gray-100"
+          >
+            取消
+          </button>
+          <button
+            onClick={onConfirm}
+            className="rounded-lg bg-red-500 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-red-600 active:bg-red-700"
+          >
+            删除
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** 新建子集后，若合集本身还留着计时记录，提示迁到某个子集下 */
 interface MigrateHint {
   containerId: string;
@@ -224,6 +295,7 @@ export default function TodoList() {
   const [addingChildFor, setAddingChildFor] = useState<string | null>(null);
   const [childInput, setChildInput] = useState("");
   const [migrate, setMigrate] = useState<MigrateHint | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -235,6 +307,18 @@ export default function TodoList() {
     setAddingChildFor(id);
     setChildInput("");
   }, []);
+
+  // 删除走二次确认：先记住待删 id，确认后才真正调用 deleteTodo
+  const requestDelete = useCallback((todo: Todo) => {
+    setPendingDeleteId(todo.id);
+  }, []);
+
+  const cancelDelete = useCallback(() => setPendingDeleteId(null), []);
+
+  const confirmDelete = useCallback(() => {
+    if (pendingDeleteId) deleteTodo(pendingDeleteId);
+    setPendingDeleteId(null);
+  }, [pendingDeleteId, deleteTodo]);
 
   const submitChild = async (e: FormEvent, parent: Todo) => {
     e.preventDefault();
@@ -325,7 +409,7 @@ export default function TodoList() {
                   childRunningName={runningChild?.text ?? null}
                   elapsedMs={elapsedMs}
                   onToggle={toggleTodo}
-                  onDelete={deleteTodo}
+                  onRequestDelete={requestDelete}
                   onEdit={editTodo}
                   onToggleTimer={toggleTimer}
                   onAddChild={openAddChild}
@@ -342,7 +426,7 @@ export default function TodoList() {
                           childRunningName={null}
                           elapsedMs={elapsedMs}
                           onToggle={toggleTodo}
-                          onDelete={deleteTodo}
+                          onRequestDelete={requestDelete}
                           onEdit={editTodo}
                           onToggleTimer={toggleTimer}
                           onAddChild={openAddChild}
@@ -432,6 +516,10 @@ export default function TodoList() {
             </button>
           )}
         </footer>
+      )}
+
+      {pendingDeleteId && (
+        <DeleteConfirm onConfirm={confirmDelete} onCancel={cancelDelete} />
       )}
     </div>
   );
