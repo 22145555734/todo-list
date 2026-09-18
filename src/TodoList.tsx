@@ -11,7 +11,7 @@ import {
 import { useStore } from "./store";
 import { useNow } from "./useNow";
 import { formatHms, formatShort } from "./time";
-import { getLevelInfo } from "./level";
+import { getLevelInfo, levelColor, levelColorText } from "./level";
 import type { Todo } from "./types";
 
 type Filter = "all" | "active" | "completed";
@@ -67,6 +67,9 @@ const TodoItem = memo(function TodoItem({
   const now = useNow(ticking);
   const elapsed = elapsedMs(todo.id, now);
   const info = getLevelInfo(elapsed);
+  const isMaxLevel = info.nextLevel === null;
+  const badgeColor = isMaxLevel ? "" : levelColor(info.level);
+  const titleColor = isMaxLevel ? "" : levelColorText(info.level);
 
   const startEdit = () => {
     setEditing(true);
@@ -207,15 +210,25 @@ const TodoItem = memo(function TodoItem({
         </div>
       </div>
 
-      {/* 等级 / 称号：合集按各子任务累加的总时长计算，子任务没有 */}
+      {/* 等级 / 称号：合集按各子任务累加的总时长计算，子任务没有；颜色随等级渐变，满级炫彩 */}
       {!isChild && (
         <div className="mt-2 border-t border-gray-100 pt-2">
           <div className="mb-1.5 flex items-center justify-between">
-            <span className="flex items-center gap-1.5">
-              <span className="rounded bg-indigo-500 px-1.5 py-0.5 text-xs font-bold leading-none text-white">
+            <span className="flex items-center gap-2">
+              <span
+                className={`rounded-md px-2 py-0.5 text-xs font-bold leading-none text-white ${
+                  isMaxLevel ? "rainbow-bg" : ""
+                }`}
+                style={isMaxLevel ? undefined : { backgroundColor: badgeColor }}
+              >
                 Lv.{info.level}
               </span>
-              <span className="text-sm font-semibold text-gray-700">
+              <span
+                className={`text-sm font-semibold ${
+                  isMaxLevel ? "rainbow-text" : ""
+                }`}
+                style={isMaxLevel ? undefined : { color: titleColor }}
+              >
                 {info.title}
               </span>
             </span>
@@ -227,8 +240,17 @@ const TodoItem = memo(function TodoItem({
           </div>
           <div className="h-2.5 w-full overflow-hidden rounded-full bg-gray-200 ring-1 ring-inset ring-gray-200">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 transition-all"
-              style={{ width: `${(info.progress * 100).toFixed(1)}%` }}
+              className={`h-full rounded-full transition-all ${
+                isMaxLevel ? "rainbow-bg" : ""
+              }`}
+              style={
+                isMaxLevel
+                  ? { width: "100%" }
+                  : {
+                      width: `${(info.progress * 100).toFixed(1)}%`,
+                      background: badgeColor,
+                    }
+              }
             />
           </div>
         </div>

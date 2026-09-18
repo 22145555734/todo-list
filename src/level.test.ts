@@ -1,6 +1,8 @@
 import {
   cumulativeMinutes,
   getLevelInfo,
+  levelColor,
+  levelColorText,
   levelMinutes,
   MAX_LEVEL,
 } from "./level";
@@ -41,4 +43,35 @@ test("单级耗时单调递增，且第 500 级为 105 分钟", () => {
   for (let i = 2; i <= MAX_LEVEL; i++) {
     expect(levelMinutes(i)).toBeGreaterThan(levelMinutes(i - 1));
   }
+});
+
+test("等级主题色在锚点处取品质色", () => {
+  expect(levelColor(1)).toBe("rgb(34, 197, 94)"); // 绿
+  expect(levelColor(100)).toBe("rgb(59, 130, 246)"); // 蓝
+  expect(levelColor(200)).toBe("rgb(168, 85, 247)"); // 紫
+  expect(levelColor(300)).toBe("rgb(245, 158, 11)"); // 金
+  expect(levelColor(400)).toBe("rgb(239, 68, 68)"); // 红
+  expect(levelColor(499)).toBe("rgb(185, 28, 28)"); // 深红
+});
+
+test("等级主题色相邻两级都不同（连续渐变）", () => {
+  for (const lv of [50, 150, 250, 350, 450]) {
+    expect(levelColor(lv)).not.toBe(levelColor(lv + 1));
+  }
+});
+
+test("文字色是底色加深版（白底可读）", () => {
+  const base = levelColor(250);
+  const text = levelColorText(250);
+  const [br, bg, bb] = base
+    .slice(4, -1)
+    .split(",")
+    .map((n) => Number(n.trim()));
+  const [tr, tg, tb] = text
+    .slice(4, -1)
+    .split(",")
+    .map((n) => Number(n.trim()));
+  expect(tr).toBeLessThan(br);
+  expect(tg).toBeLessThan(bg);
+  expect(tb).toBeLessThan(bb);
 });
