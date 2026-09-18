@@ -3,6 +3,7 @@ import {
   getLevelInfo,
   levelColor,
   levelColorText,
+  levelFont,
   levelMinutes,
   MAX_LEVEL,
 } from "./level";
@@ -74,4 +75,25 @@ test("文字色是底色加深版（白底可读）", () => {
   expect(tr).toBeLessThan(br);
   expect(tg).toBeLessThan(bg);
   expect(tb).toBeLessThan(bb);
+});
+
+test("新手档用页面默认字体（不改 font-family）", () => {
+  expect(levelFont(1).family).toBeNull();
+  expect(levelFont(50).family).toBeNull();
+});
+
+test("字体三档递进：新手默认 → 楷体 → 得意黑", () => {
+  expect(levelFont(51).family).toContain("LevelKai");
+  expect(levelFont(400).family).toContain("LevelKai");
+  expect(levelFont(401).family).toContain("LevelSmiley");
+  expect(levelFont(MAX_LEVEL).family).toContain("LevelSmiley");
+});
+
+test("字号随等级单调递增，1 级为 12/14，满级为 17/26", () => {
+  expect(levelFont(1)).toMatchObject({ badgeSize: 12, titleSize: 14 });
+  expect(levelFont(MAX_LEVEL)).toMatchObject({ badgeSize: 17, titleSize: 26 });
+  for (const lv of [1, 50, 51, 200, 400, 401, 499]) {
+    expect(levelFont(lv + 1).badgeSize).toBeGreaterThan(levelFont(lv).badgeSize);
+    expect(levelFont(lv + 1).titleSize).toBeGreaterThan(levelFont(lv).titleSize);
+  }
 });
