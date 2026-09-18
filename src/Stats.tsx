@@ -112,7 +112,7 @@ export default function Stats() {
     return { startKey: start, endKey: todayK, unit: pickUnit(start, todayK) };
   }, [preset, customStart, customEnd, todayK]);
 
-  // 没有子集时隐藏合并/展开开关，保持原有界面不变
+  // 没有子任务时隐藏合并/展开开关，保持原有界面不变
   const hasSubs = useMemo(
     () => sessions.some((s) => s.rootSubject !== null),
     [sessions],
@@ -229,8 +229,8 @@ export default function Stats() {
         {hasSubs && (
           <div className="flex gap-1 rounded-lg bg-gray-100 p-0.5">
             {[
-              { value: true, label: "合并子集" },
-              { value: false, label: "展开子集" },
+              { value: true, label: "合并子任务" },
+              { value: false, label: "展开子任务" },
             ].map((o) => (
               <button
                 key={o.label}

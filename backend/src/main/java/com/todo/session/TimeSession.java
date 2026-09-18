@@ -26,7 +26,7 @@ public class TimeSession {
 
     /**
      * 开始计时时快照的所属合集名称；null 表示该会话不属于任何合集（顶层事项计时）。
-     * 统计页「合并子集」视图用它把子集时长归并回合集。
+     * 统计页「合并子任务」视图用它把子任务时长归并回合集。
      */
     @Column(length = 500)
     private String rootSubject;

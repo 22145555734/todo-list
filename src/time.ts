@@ -124,7 +124,7 @@ export function generateBuckets(
   return buckets;
 }
 
-/** 会话的聚合键：合并视图下子集归并回所属合集，展开视图下按各自的事项名 */
+/** 会话的聚合键：合并视图下子任务归并回所属合集，展开视图下按各自的事项名 */
 export function aggregateKey(s: TimeSession, merge: boolean): string {
   return merge ? (s.rootSubject ?? s.subject) : s.subject;
 }
@@ -133,8 +133,8 @@ export function aggregateKey(s: TimeSession, merge: boolean): string {
  * 按时间范围与粒度聚合会话。每个会话归属于其开始时刻所在的桶
  * （跨桶/跨午夜的极少数场景不拆分）。返回桶统计与全量科目列表（用于稳定配色）。
  *
- * merge=true 时子集时长并入所属合集（一个合集一根柱子）；
- * merge=false 时各子集独立成柱。
+ * merge=true 时子任务时长并入所属合集（一个合集一根柱子）；
+ * merge=false 时各子任务独立成柱。
  */
 export function buildStats(
   sessions: TimeSession[],

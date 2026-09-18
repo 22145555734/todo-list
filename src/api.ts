@@ -86,7 +86,7 @@ export const api = {
       body: JSON.stringify({ end }),
     });
   },
-  /** 把合集已有的计时记录迁移到它的某个子集 */
+  /** 把合集已有的计时记录迁移到它的某个子任务 */
   adoptTime(containerId: string, targetId: string) {
     return request<void>(`/todos/${containerId}/adopt-time`, {
       method: "POST",

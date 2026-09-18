@@ -41,9 +41,9 @@ public class TodoService {
         if (parentId != null) {
             Todo parent = owned(parentId);
             if (parent.getParentId() != null) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "子集下不能再加子集");
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "子任务下不能再加子任务");
             }
-            // 合集由子集分别计时，本身不再计时：结束它仍在进行的会话（保留历史）
+            // 合集由子任务分别计时，本身不再计时：结束它仍在进行的会话（保留历史）
             endRunning(uid, parentId);
         }
         long now = System.currentTimeMillis();
@@ -74,7 +74,7 @@ public class TodoService {
         Todo todo = todoRepository.findById(id)
                 .filter(t -> t.getUserId().equals(uid))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "事项不存在"));
-        // 合集连同子集一起删除；计时记录照旧保留，用于统计
+        // 合集连同子任务一起删除；计时记录照旧保留，用于统计
         for (Todo child : todoRepository.findByUserIdAndParentId(uid, id)) {
             endRunning(uid, child.getId());
             todoRepository.delete(child);
@@ -91,7 +91,7 @@ public class TodoService {
                 all.stream().filter(Todo::isCompleted).map(Todo::getId).collect(Collectors.toSet());
         for (Todo t : all) {
             if (!t.isCompleted()) continue;
-            // 合集已完成时其子集会被一并删除，跳过以免重复删除
+            // 合集已完成时其子任务会被一并删除，跳过以免重复删除
             if (t.getParentId() != null && completedIds.contains(t.getParentId())) continue;
             delete(t.getId());
         }
