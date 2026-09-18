@@ -3,8 +3,10 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
+  type ReactNode,
 } from "react";
 import { useStore } from "./store";
 import { useNow } from "./useNow";
@@ -183,9 +185,23 @@ const TodoItem = memo(function TodoItem({
             <button
               onClick={() => onToggleCollapse(todo.id)}
               aria-expanded={!collapsed}
-              className="rounded-md px-2 py-1 text-sm text-gray-500 transition hover:bg-gray-200 hover:text-gray-700"
+              className="flex items-center gap-1 rounded-md px-2 py-1 text-sm text-gray-500 transition hover:bg-gray-200 hover:text-gray-700"
             >
               {collapsed ? "展开" : "收起"}
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                className={`h-3.5 w-3.5 transition-transform duration-200 ${
+                  collapsed ? "-rotate-90" : ""
+                }`}
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.168l3.71-3.938a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z"
+                  clipRule="evenodd"
+                />
+              </svg>
             </button>
           )}
         </div>
@@ -220,6 +236,73 @@ const TodoItem = memo(function TodoItem({
     </div>
   );
 });
+
+/** 可展开/收起容器：展开时做高度入场动画，收起时高度归零、动画结束后卸载内容 */
+function Collapsible({
+  open,
+  children,
+}: {
+  open: boolean;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(open);
+  const first = useRef(true);
+
+  // 展开：挂载内容（卸载推迟到收起动画结束，见下）
+  useEffect(() => {
+    if (open) setMounted(true);
+  }, [open]);
+
+  // 入场动画：内容刚挂载后（此时才能测到自然高度）从 0 过渡到自然高度
+  useEffect(() => {
+    if (!mounted) return;
+    if (first.current) {
+      first.current = false;
+      return; // 首次渲染直接落位，不做动画
+    }
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "0px";
+    void el.offsetHeight; // 强制回流，让起点 0 生效
+    el.style.height = `${el.scrollHeight}px`;
+    const finish = () => {
+      el.style.height = "auto";
+    };
+    const timer = window.setTimeout(finish, 300);
+    el.addEventListener("transitionend", finish, { once: true });
+    return () => {
+      window.clearTimeout(timer);
+      el.removeEventListener("transitionend", finish);
+    };
+  }, [mounted]);
+
+  // 退场动画：高度归零，动画结束后卸载内容（否则元素留在 DOM 里仍可被聚焦）
+  useEffect(() => {
+    if (open || first.current) return;
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = `${el.scrollHeight}px`;
+    void el.offsetHeight;
+    el.style.height = "0px";
+    const finish = () => setMounted(false);
+    const timer = window.setTimeout(finish, 300);
+    el.addEventListener("transitionend", finish, { once: true });
+    return () => {
+      window.clearTimeout(timer);
+      el.removeEventListener("transitionend", finish);
+    };
+  }, [open]);
+
+  return (
+    <div
+      ref={ref}
+      style={{ overflow: "hidden", transition: "height 250ms ease" }}
+    >
+      {mounted ? children : null}
+    </div>
+  );
+}
 
 /**
  * 删除二次确认弹窗。
@@ -450,27 +533,29 @@ export default function TodoList() {
                   onToggleCollapse={toggleCollapse}
                 />
 
-                {children.length > 0 && !collapsedIds.has(todo.id) && (
-                  <ul className="ml-3 mt-2 space-y-2 border-l-2 border-blue-100 pl-3">
-                    {children.map((c) => (
-                      <li key={c.id}>
-                        <TodoItem
-                          todo={c}
-                          running={runningTodoId === c.id}
-                          childCount={0}
-                          childRunningName={null}
-                          elapsedMs={elapsedMs}
-                          onToggle={toggleTodo}
-                          onRequestDelete={requestDelete}
-                          onEdit={editTodo}
-                          onToggleTimer={toggleTimer}
-                          onAddChild={openAddChild}
-                          collapsed={false}
-                          onToggleCollapse={toggleCollapse}
-                        />
-                      </li>
-                    ))}
-                  </ul>
+                {children.length > 0 && (
+                  <Collapsible open={!collapsedIds.has(todo.id)}>
+                    <ul className="ml-3 mt-2 space-y-2 border-l-2 border-blue-100 pl-3">
+                      {children.map((c) => (
+                        <li key={c.id}>
+                          <TodoItem
+                            todo={c}
+                            running={runningTodoId === c.id}
+                            childCount={0}
+                            childRunningName={null}
+                            elapsedMs={elapsedMs}
+                            onToggle={toggleTodo}
+                            onRequestDelete={requestDelete}
+                            onEdit={editTodo}
+                            onToggleTimer={toggleTimer}
+                            onAddChild={openAddChild}
+                            collapsed={false}
+                            onToggleCollapse={toggleCollapse}
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                  </Collapsible>
                 )}
 
                 {addingChildFor === todo.id && (

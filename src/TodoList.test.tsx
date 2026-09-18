@@ -307,8 +307,10 @@ test("子任务可收起 / 展开，默认展开", async () => {
 
   await user.click(screen.getByRole("button", { name: "收起" }));
 
-  // 子任务藏起来，合集本身和计数还在
-  expect(screen.queryByText("操作系统")).not.toBeInTheDocument();
+  // 子任务收起有退出动画，等它结束（visibility 隐藏）后再断言消失
+  await waitFor(() =>
+    expect(screen.queryByText("操作系统")).not.toBeInTheDocument(),
+  );
   expect(screen.getByText("408")).toBeInTheDocument();
   expect(screen.getByText("1 个子任务")).toBeInTheDocument();
 
@@ -322,7 +324,9 @@ test("收起状态下点「+ 子任务」会自动展开", async () => {
   await makeContainer(user);
 
   await user.click(screen.getByRole("button", { name: "收起" }));
-  expect(screen.queryByText("操作系统")).not.toBeInTheDocument();
+  await waitFor(() =>
+    expect(screen.queryByText("操作系统")).not.toBeInTheDocument(),
+  );
 
   // 不自动展开的话，刚加的子任务会看不见
   await user.click(screen.getByRole("button", { name: "添加子任务" }));
