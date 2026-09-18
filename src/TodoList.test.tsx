@@ -127,7 +127,7 @@ test("切换完成状态", async () => {
   );
 });
 
-test("删除任务", async () => {
+test("点删除只弹确认框，确认后才真删", async () => {
   const user = userEvent.setup();
   renderTodoList();
 
@@ -136,9 +136,34 @@ test("删除任务", async () => {
 
   await user.click(screen.getByRole("button", { name: "删除任务" }));
 
+  // 弹窗已弹出，但此时事项还在
+  expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+  expect(
+    screen.getByText("删除后不可恢复，已记录的计时时长会保留在统计中。"),
+  ).toBeInTheDocument();
+  expect(screen.getByText("任务")).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "删除" }));
+
   await waitFor(() =>
     expect(screen.queryByText("任务")).not.toBeInTheDocument(),
   );
+});
+
+test("确认框点取消则不删除", async () => {
+  const user = userEvent.setup();
+  renderTodoList();
+
+  await user.type(screen.getByPlaceholderText("添加新任务..."), "任务{enter}");
+  expect(await screen.findByText("任务")).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "删除任务" }));
+  await user.click(screen.getByRole("button", { name: "取消" }));
+
+  await waitFor(() =>
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument(),
+  );
+  expect(screen.getByText("任务")).toBeInTheDocument();
 });
 
 test("编辑任务", async () => {
@@ -282,6 +307,12 @@ test("删除合集会连子集一起删掉", async () => {
 
   // 第一个删除按钮属于合集本身（合集渲染在子集之前）
   await user.click(screen.getAllByRole("button", { name: "删除任务" })[0]);
+
+  // 确认框点名会连带删除的子集数量
+  expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+  expect(screen.getByText(/1 个子集也会一起删除/)).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "删除" }));
 
   await waitFor(() =>
     expect(screen.queryByText("408")).not.toBeInTheDocument(),
