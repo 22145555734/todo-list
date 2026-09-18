@@ -2,35 +2,164 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 等级称号字体，按等级分档（档位划分见 level.ts 的 levelFont）。
-   注意这三款字体**只作用于称号**，徽章「Lv.N」始终用页面默认字体。
+/* 等级称号字体，一档一款（档位与字体族的对应见 level.ts 的 RANKS）。
+   注意这些字体**只作用于称号**，徽章「Lv.N」始终用页面默认字体。
 
-   LevelKai（霞鹜文楷，51~400 级）与 LevelTaidou（马善政毛笔楷书，401~499 级）
-   都是 OFL 开源字体，各只嵌入用到的字符，共约 21KB，许可证见
-   src/assets/fonts/OFL-*.txt。子集是 2026-09-18 之前做的，按「所有称号 +
-   "Lv." + 数字」35 字嵌入，徽章改用默认字体后后面这 13 个字就闲置了 ——
-   只占几 KB，不值得为它重做子集。
+   新手（1~50）不用自定义字体，走页面默认；51 级起每档换一款，越往上越偏手写：
+   学徒 等宽黑 → 研习者 霞鹜文楷 → 实践者 思源黑体粗 → 能手 江西拙楷 →
+   资深 程荣光刻楷 → 顾问 硬笔行书 → 首席 鸿雷行书 → 泰斗 志莽行书 →
+   登峰造极 云峰飞云体（Lv.500，本轮未改）。
 
-   LevelPeak（云峰飞云体，满级）授权不允许修改字体，因此整包原样引入、不做子集，
-   体积 7.56MB，授权说明见 src/assets/fonts/授权说明-云峰飞云体.txt。
-   它只在 500 级的称号上被引用，浏览器按需下载（@font-face 不会预取），
-   低等级用户不会触发这笔流量；nginx 另开了 gzip，实测传输 4.74MB。
+   引入方式按授权分两类，见各家的说明文件：
 
-   新手档（1~50 级）不使用任何自定义字体，走页面默认字体。 */
+   1) 原样搬运中文网字计划（@chinese-fonts/*）已切好的分片，一个字节都不改。
+      每档只取覆盖本档那两三个字的分片（1~2 片），按 unicode-range 引用；
+      浏览器只在实际用到范围内字符时才下载。之所以不自己子集化，是因为
+      江西拙楷 / 程荣光刻楷 / 鸿雷行书简体 / 瑞美加张清平硬笔行书这四家的
+      条款写明「不可修改字体及制作衍生版本」或未声明修改权，子集化即修改。
+      分片是上游发布给浏览器用的形态，原样引用不属于我方修改。
+
+   2) 实践者用的思源黑体粗（Noto Sans SC Bold）是 OFL，且中文网字计划里没有
+      这款，因此取整包自行子集化，只留「实践者」三字，1.7KB。
+
+   OFL 许可证见 src/assets/fonts/OFL-*.txt，其余见 授权说明-*.txt。
+   满级那档的云峰飞云体授权同样不允许修改，整包原样引入（7.56MB）—— 它只在 500 级
+   被引用，浏览器按需下载（@font-face 不会预取），低等级用户不会触发；
+   nginx 另开了 gzip，实测传输 4.74MB。 */
+
 @font-face {
-  font-family: "LevelKai";
-  src: url("./assets/fonts/wenkai-subset.woff2") format("woff2");
+  font-family: "LevelXuetu";
+  src: url("./assets/fonts/LevelXuetu-1.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
+  unicode-range: U+4E00, U+4E0A, U+4E0D, U+4E1A, U+4E2A, U+4E2D, U+4E3A, U+4E86, U+4E8E, U+4EBA, U+4EE5, U+4F1A, U+4F5C, U+51FA, U+5206, U+5230, U+5316, U+53D1, U+53EF, U+548C, U+56FD, U+5728, U+5730, U+5927, U+5B66, U+5B9A, U+5B9E, U+5BF9, U+5DE5, U+5E74, U+6210, U+65B9, U+65F6, U+662F, U+6709, U+6CD5, U+7406, U+751F, U+7528, U+7684, U+80FD, U+884C, U+8981, U+8FD9;
+}
+
+@font-face {
+  font-family: "LevelXuetu";
+  src: url("./assets/fonts/LevelXuetu-2.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+4E01, U+4E1D, U+4E4C, U+4EC1, U+4EF2, U+4F0A, U+4F0D, U+4F0F, U+4F19, U+4F26, U+4F38, U+503E, U+5141, U+51B0, U+51E1, U+51FD, U+520A, U+5385, U+5409, U+5434, U+54A8, U+54C8, U+54F2, U+5708, U+5723, U+585E, U+58A8, U+58C1, U+5987-5988, U+5BD2, U+5C3E, U+5CA9, U+5E84, U+5F90, U+5F92, U+5FE0, U+5FFD, U+6050, U+6062, U+6089, U+622A, U+624E, U+6291, U+6316, U+6389, U+641C, U+65D7, U+664B, U+6682, U+6697, U+6731, U+6768, U+67F1, U+6881, U+68A6, U+6CE1, U+6CE5, U+6CFD, U+6D1B, U+6D1E, U+6D25, U+6D59, U+6D6A, U+6D6E, U+6D82, U+6DB5, U+6E21, U+6ED1, U+70BC, U+7206, U+74E6, U+76DF, U+79E6, U+7C4D, U+7C92, U+7EA4, U+8010, U+8033, U+808C, U+80AF, U+80C3, U+80C6, U+80F6, U+8102, U+811A, U+817A, U+82AF, U+8584, U+866B, U+88C2, U+8BAF, U+8BE6, U+8C0B, U+8C10, U+8C31, U+8C37, U+8D21, U+8D4F, U+8D56, U+8DF3, U+8FCE, U+8FD4, U+8FEB, U+903B, U+906D, U+9897, U+9910, U+9A97, U+9C81, U+9ED8;
+}
+
+@font-face {
+  font-family: "LevelYanxizhe";
+  src: url("./assets/fonts/LevelYanxizhe-1.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+4E09, U+4E60, U+4E8C, U+4E9B, U+4EA4, U+4EF6, U+4EFB, U+4F01, U+4F46, U+4F4D, U+4F7F, U+4FE1, U+5165, U+5229, U+533A, U+5341, U+539F, U+53D8, U+5404, U+5411, U+5458, U+573A, U+5904, U+5916, U+5929, U+597D, U+5B89, U+5BFC, U+5C06, U+5E38, U+5E73, U+5F0F, U+5F3A, U+5F62, U+60C5, U+610F, U+6280, U+6301, U+6307, U+636E, U+63A5, U+6548, U+65E0, U+65E5, U+66F4, U+6700, U+6708, U+672F, U+6743, U+6761, U+6784, U+679C, U+6807, U+6B21, U+6B63-6B64, U+6BD4, U+6C42, U+6CBB, U+6D3B, U+6D41, U+7136, U+7279, U+7531, U+7740, U+77E5, U+7814, U+793E, U+79D1, U+7ACB, U+7C7B, U+7EC4, U+7ED3, U+7EDF, U+80B2, U+8868, U+89E3, U+8BA1, U+8BF4, U+8C03, U+8D28, U+8D77, U+8FD8, U+9053, U+90FD, U+91D1, U+95EE, U+9700;
+}
+
+@font-face {
+  font-family: "LevelYanxizhe";
+  src: url("./assets/fonts/LevelYanxizhe-2.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+4E0B, U+4E3B, U+4E4B, U+4E5F, U+4E8B, U+4ECE, U+4ED6, U+4EE3, U+4EEC, U+4FDD, U+5168, U+516C, U+5173, U+5176, U+5185, U+5236, U+524D, U+52A0-52A1, U+53CA, U+540C, U+540E, U+54C1, U+56E0, U+57FA, U+5982, U+5B50, U+5BB6, U+5C0F, U+5C31, U+5C55, U+5E02, U+5E76, U+5E94, U+5EA6, U+5EFA, U+5F00, U+5F53, U+5F97, U+5FC3, U+6216, U+6240, U+63D0, U+653F, U+6559, U+6570, U+6587, U+65B0, U+660E, U+671F, U+672C, U+673A, U+6C11, U+6C34, U+70B9, U+7269, U+7535, U+76EE, U+76F8, U+79CD, U+7A0B, U+7B2C, U+7BA1, U+7CFB, U+8005, U+800C, U+89C4, U+8BBE, U+8D44, U+901A, U+90E8, U+91CD, U+91CF, U+957F, U+95F4, U+9762, U+9898;
+}
+
+@font-face {
+  font-family: "LevelShijianzhe";
+  src: url("./assets/fonts/LevelShijianzhe.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+5B9E, U+8005, U+8DF5;
+}
+
+@font-face {
+  font-family: "LevelNengshou";
+  src: url("./assets/fonts/LevelNengshou-1.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+4E16, U+4F60, U+515A, U+517B, U+51B3, U+533B, U+53BB, U+53E3, U+53EA, U+5668, U+57CE, U+5883, U+5BB9, U+6001, U+6218, U+624B, U+653E, U+6821, U+683C, U+6848, U+6A21, U+7387, U+793A, U+7EBF, U+8054, U+81F3, U+8272, U+8BB0, U+8BE5, U+8D39, U+8FBE, U+96C6, U+9A8C;
+}
+
+@font-face {
+  font-family: "LevelNengshou";
+  src: url("./assets/fonts/LevelNengshou-2.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+4E0A, U+4E1A, U+4E2A, U+4E86, U+4F1A, U+4F5C, U+53D1, U+5927, U+5BF9, U+5E74, U+6210, U+65F6, U+7406, U+7528, U+80FD, U+884C, U+8981, U+8FD9;
+}
+
+@font-face {
+  font-family: "LevelZishen";
+  src: url("./assets/fonts/LevelZishen-1.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+4E07, U+4F18, U+4F8B, U+5149, U+518D, U+51B5, U+5212, U+529E-529F, U+5317, U+5347, U+5357, U+5386, U+53C2, U+53F0, U+53F2, U+56DE, U+56FE, U+57DF, U+5C71, U+5E26, U+5E7F, U+5F8B, U+6237, U+628A, U+63A7, U+6599, U+65AD, U+6613, U+672A, U+6751, U+6781, U+6D4B, U+6D77, U+6D88, U+6DF1, U+6E05, U+72B6, U+754C, U+76D1, U+795E, U+79EF, U+7A7A, U+7B56, U+7B97, U+7CBE, U+7EED, U+7EF4, U+804C, U+81F4, U+8303, U+89C1, U+8BAE, U+8BFE, U+8C61, U+8D23, U+8FD1, U+90A3, U+9632, U+9669, U+96BE;
+}
+
+@font-face {
+  font-family: "LevelZishen";
+  src: url("./assets/fonts/LevelZishen-2.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+4E0B, U+4E5F, U+4E8B, U+4ED6, U+4EEC, U+516C, U+5173, U+5176, U+5185, U+52A0-52A1, U+540E, U+5982, U+5B50, U+5BB6, U+5C31, U+5C55, U+5E94, U+5EA6, U+5EFA, U+5F00, U+6240, U+63D0, U+6559, U+6570, U+6587, U+65B0, U+672C, U+673A, U+6C11, U+79CD, U+7BA1, U+7CFB, U+8005, U+800C, U+8BBE, U+8D44, U+901A, U+90E8, U+91CD, U+91CF, U+9762;
+}
+
+@font-face {
+  font-family: "LevelGuwen";
+  src: url("./assets/fonts/LevelGuwen-1.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+4E8C, U+4E9B, U+4F01, U+4F46, U+53D8, U+5458, U+573A, U+5B89, U+5E38, U+5F3A, U+5F62, U+65E0, U+66F4, U+679C, U+6807, U+6B63-6B64, U+6BD4, U+7136, U+7531, U+7814, U+7ACB, U+80B2, U+8D28, U+9053, U+91D1, U+95EE, U+9700;
+}
+
+@font-face {
+  font-family: "LevelGuwen";
+  src: url("./assets/fonts/LevelGuwen-2.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+4E45, U+4F11, U+4FA7, U+507F, U+5170, U+5175, U+51B2, U+51B7, U+5218, U+5267, U+526F, U+5382, U+542F, U+5510, U+5C01, U+5C24, U+5DE8, U+62DB, U+6551, U+6728, U+677E, U+6C27, U+6D3E, U+6E2F, U+6E56, U+7075, U+724C, U+76D6, U+7BC7, U+7F29, U+7F5A, U+85CF, U+8861, U+8BA2, U+8BEF, U+8DA3, U+900F, U+9152, U+9605, U+9759, U+987E;
+}
+
+@font-face {
+  font-family: "LevelShouxi";
+  src: url("./assets/fonts/LevelShouxi-1.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+4E71, U+4F1F, U+51C0, U+51DD, U+5706, U+590F, U+591C, U+5C4A, U+5C97, U+5C9B, U+5DDD, U+5E2D, U+5E97, U+5F39, U+6000, U+6167, U+6276, U+632F, U+654F, U+66B4, U+672B, U+6C9F, U+6CBF, U+6DA6, U+6DA8, U+6E7E, U+7389, U+77FF, U+79CB, U+7ED5, U+80DC, U+821E, U+8D26, U+8D34, U+8D54, U+8FC1, U+904D, U+9634, U+96E8, U+96F7, U+9876, U+9C9C, U+9F84;
+}
+
+@font-face {
+  font-family: "LevelShouxi";
+  src: url("./assets/fonts/LevelShouxi-2.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+4E89, U+4E92, U+4EC5, U+51CF, U+5217, U+53E4, U+5584, U+56F4, U+575A, U+591F, U+5B69, U+5BA2, U+5C5E, U+5E8F, U+5FF5, U+627F, U+62EC, U+6392, U+6545, U+65CF, U+6750, U+6B3E, U+738B, U+7403, U+767E, U+79BB, U+7AE0, U+82B1, U+8BB8, U+8D1F, U+8D22, U+8D85, U+964D, U+987B, U+9996, U+9A6C;
 }
 
 @font-face {
   font-family: "LevelTaidou";
-  src: url("./assets/fonts/mashan-subset.woff2") format("woff2");
+  src: url("./assets/fonts/LevelTaidou-1.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
+  unicode-range: U+4E30, U+4E5D, U+4E70, U+4EB2, U+4F3C, U+501F, U+503A, U+5047, U+505C, U+50A8, U+523B, U+5242, U+5343, U+535A, U+53E5, U+542C, U+5462, U+5473, U+54EA, U+5802, U+5B88, U+5B9D, U+5BA3, U+5C04, U+5C81, U+5DE6, U+5E01, U+5E2E, U+5E7C, U+5E93, U+5EAD, U+600E, U+6025, U+6269, U+627E, U+62C9, U+6388, U+638C, U+63E1, U+64AD, U+6563, U+6597, U+65E2, U+661F, U+6625, U+66F2, U+66FE, U+6742, U+6811, U+690D, U+6B66, U+6C49, U+6C7D, U+6D89, U+6DB2, U+75BE, U+767B, U+7801, U+7968, U+798F, U+7ADE, U+7B14, U+7EC3, U+7EFF, U+7F57, U+7F6A, U+805A, U+80CC, U+8111, U+82CF, U+82E5, U+8457, U+8651, U+865A, U+867D, U+8C08, U+8D2B, U+8FDD, U+9000, U+9010, U+9047, U+907F, U+9178, U+91CA, U+94FE, U+9519, U+9547, U+9760, U+9891, U+98DE;
+}
+
+@font-face {
+  font-family: "LevelTaidou";
+  src: url("./assets/fonts/LevelTaidou-2.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+4E39, U+4ED3, U+5192, U+5237, U+52D2, U+52E4, U+5348, U+5375, U+5398, U+54E5, U+5531, U+5609, U+573E, U+5761, U+5783, U+58E4, U+5B64, U+5B85, U+5B99, U+5BFF, U+5C16, U+5C1D, U+5C3A, U+5C4F, U+5E86, U+5F79, U+6069, U+6108, U+614E, U+6234, U+626B, U+6270, U+62A2, U+62C6, U+62D2, U+6302, U+63D2, U+63F4, U+6446, U+654C, U+65CB, U+6676, U+6696, U+66F0, U+66F9, U+6717, U+6746, U+675C, U+6885, U+6BC1, U+6C22, U+6CF0, U+6D2A, U+6D45, U+6DFB, U+6EE4, U+704C, U+7070, U+7089, U+7267, U+73CD, U+78E8, U+7A97, U+7ADF, U+7AF9, U+7B11, U+7C97, U+8083, U+80A4, U+80C0, U+80CE, U+80E1, U+80F8, U+820D, U+8212, U+84DD, U+8870, U+89C8, U+8BC8, U+8C46, U+8D5E, U+8DC3, U+8DCC, U+8F68, U+8F96, U+8F9B, U+8FDF, U+9003, U+9006, U+90A6, U+916C, U+94DC, U+94FA, U+9501, U+950B, U+95F2, U+9614, U+9675-9676, U+9686, U+96EA, U+987F, U+9970, U+9B4F, U+9E1F;
 }
 
 @font-face {
