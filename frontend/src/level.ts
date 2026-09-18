@@ -171,8 +171,8 @@ export function levelFont(level: number): LevelFont {
   const lv = Math.min(Math.max(level, 1), MAX_LEVEL);
   const t = (lv - 1) / (MAX_LEVEL - 1); // 1 级为 0，满级为 1
   return {
-    badgeSize: 12 + t * 5, // 12 → 17
-    titleSize: 14 + t * 12, // 14 → 26
+    badgeSize: 10 + t * 8, // 10 → 18
+    titleSize: 10 + t * 26, // 10 → 36
     titleFamily: rankOf(lv)?.font ?? null,
   };
 }
