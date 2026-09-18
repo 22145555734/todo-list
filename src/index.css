@@ -37,7 +37,7 @@
     #a855f7,
     #ef4444
   );
-  background-size: 400% 100%;
+  background-size: 200% 100%;
   animation: rainbow-shift 3s linear infinite;
 }
 
@@ -52,7 +52,7 @@
     #a855f7,
     #ef4444
   );
-  background-size: 400% 100%;
+  background-size: 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -64,6 +64,8 @@
     background-position: 0% 50%;
   }
   100% {
-    background-position: 100% 50%;
+    /* 200% 配 background-size:200%：恰好位移一个完整渐变周期，
+       首尾帧图案相同，循环无缝（400%→100% 只移 3/4 周期，会跳变） */
+    background-position: 200% 50%;
   }
 }
