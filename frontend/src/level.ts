@@ -154,6 +154,73 @@ export function levelColorText(level: number): string {
   return `rgb(${Math.round(r * 0.72)}, ${Math.round(g * 0.72)}, ${Math.round(b * 0.72)})`;
 }
 
+// 等级炫动：1~499 级在**自己的色域内**向右流动，速度随等级线性递增；1 级完全不动，
+// 500 级走整条彩虹（`.rainbow-*` 类，见 index.css）。
+// 「速度」以每秒跑完几个渐变周期计：500 级 = 1.5（原 1 的 1.5 倍）；
+// 499 级 = 0.8 × 500 级 = 1.2；中间的 2~498 级在 0（1 级）与 1.2 之间按等级插值。
+const PEAK_CYCLES_PER_SEC = 1.5;
+const LV499_CYCLES_PER_SEC = PEAK_CYCLES_PER_SEC * 0.8;
+
+/** 炫动幅度：色相左右各偏这么多度、明度上下各偏这么多个百分点 —— 即「保持在自己的色域附近」 */
+const SHIMMER_HUE_DEG = 8;
+const SHIMMER_LIGHT_PCT = 14;
+
+function toHsl(r: number, g: number, b: number): [number, number, number] {
+  const [rn, gn, bn] = [r / 255, g / 255, b / 255];
+  const max = Math.max(rn, gn, bn);
+  const min = Math.min(rn, gn, bn);
+  const l = (max + min) / 2;
+  const d = max - min;
+  if (d === 0) return [0, 0, l * 100];
+  const s = d / (1 - Math.abs(2 * l - 1));
+  let h: number;
+  if (max === rn) h = ((gn - bn) / d + 6) % 6;
+  else if (max === gn) h = (bn - rn) / d + 2;
+  else h = (rn - gn) / d + 4;
+  return [h * 60, s * 100, l * 100];
+}
+
+/** 逗号写法的 hsl()：T7 内核（Chromium 97）安全，不用空格分隔或 oklch */
+function hsl(h: number, s: number, l: number): string {
+  const clamp = (n: number, lo: number, hi: number) => Math.min(Math.max(n, lo), hi);
+  return `hsl(${(((h % 360) + 360) % 360).toFixed(1)}, ${clamp(s, 0, 100).toFixed(1)}%, ${clamp(l, 0, 100).toFixed(1)}%)`;
+}
+
+/** 以 rgb 为底色做「左偏暗 → 本色 → 右偏亮 → 本色 → 左偏暗」的渐变，首尾同色 */
+function shimmerGradient(rgb: [number, number, number]): string {
+  const [h, s, l] = toHsl(...rgb);
+  const lo = hsl(h - SHIMMER_HUE_DEG, s, l - SHIMMER_LIGHT_PCT);
+  const mid = hsl(h, s, l);
+  const hi = hsl(h + SHIMMER_HUE_DEG, s, l + SHIMMER_LIGHT_PCT);
+  // 首尾同为 lo：配合 background-size:200%，向右滚一个周期即可无缝衔接
+  return `linear-gradient(90deg, ${lo}, ${mid}, ${hi}, ${mid}, ${lo})`;
+}
+
+export interface LevelShimmer {
+  /** 徽章底色用的渐变 */
+  badgeImage: string;
+  /** 称号文字用的渐变（本色加深版，白底可读） */
+  titleImage: string;
+  /** 一个循环的时长（秒） */
+  durationS: number;
+}
+
+/**
+ * 1~499 级的炫动参数。1 级返回 null（完全不动），500 级也返回 null
+ * （满级走整条彩虹的 `.rainbow-*`，是另一套样式）。
+ */
+export function levelShimmer(level: number): LevelShimmer | null {
+  const lv = Math.min(Math.max(level, 1), MAX_LEVEL);
+  if (lv === 1 || lv === MAX_LEVEL) return null;
+  const [r, g, b] = levelRgb(lv);
+  return {
+    badgeImage: shimmerGradient([r, g, b]),
+    titleImage: shimmerGradient([r, g, b].map((c) => Math.round(c * 0.72)) as [number, number, number]),
+    // 速度 = (lv-1)/498 × 1.2 周期/秒，故时长是它的倒数
+    durationS: (MAX_LEVEL - 2) / ((lv - 1) * LV499_CYCLES_PER_SEC),
+  };
+}
+
 // 等级字体：字号随等级线性放大。字体**只作用于称号**，徽章「Lv.N」一律走页面
 // 默认字体 —— 数字与 "Lv." 用艺术字体反而不好认，也没必要。
 // 称号本身一档一款，字体族定义在上面的 RANKS 表里（@font-face 见 index.css）。

@@ -5,6 +5,7 @@ import {
   levelColorText,
   levelFont,
   levelMinutes,
+  levelShimmer,
   MAX_LEVEL,
   RANKS,
 } from "./level";
@@ -107,6 +108,32 @@ test("称号字体一档一款：51 级起每档换一款，满级是云峰飞�
   // 八档互不相同，没有漏改的重复项
   const used = want.map(([, f]) => f);
   expect(new Set(used).size).toBe(used.length);
+});
+
+test("1 级完全不动、满级走彩虹，都不参与本档炫动", () => {
+  expect(levelShimmer(1)).toBeNull();
+  expect(levelShimmer(MAX_LEVEL)).toBeNull();
+  expect(levelShimmer(2)).not.toBeNull();
+  expect(levelShimmer(499)).not.toBeNull();
+});
+
+test("炫动速度随等级递增，499 级是满级新速度的 0.8 倍", () => {
+  // 满级 1.5 周期/秒，499 级 = 1.5 × 0.8 = 1.2 周期/秒 → 时长 1/1.2
+  expect(levelShimmer(499)!.durationS).toBeCloseTo(1 / 1.2, 6);
+  for (const lv of [2, 50, 151, 250, 400, 498]) {
+    expect(levelShimmer(lv + 1)!.durationS).toBeLessThan(levelShimmer(lv)!.durationS);
+  }
+});
+
+test("炫动渐变首尾同色，且只用本位色的 hsl（保持在自己的色域内）", () => {
+  const s = levelShimmer(250)!;
+  for (const image of [s.badgeImage, s.titleImage]) {
+    expect(image).toMatch(/^linear-gradient\(90deg, /);
+    const stops = image.match(/hsl\([^)]*\)/g)!;
+    expect(stops).toHaveLength(5);
+    expect(stops[0]).toBe(stops[4]); // 首尾同色 → 无缝循环
+    expect(stops[0]).not.toBe(stops[2]); // 中间确实有变化，不是一整块纯色
+  }
 });
 
 test("字号随等级单调递增，1 级为 10/10，满级为 18/36", () => {
