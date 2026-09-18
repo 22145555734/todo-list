@@ -306,9 +306,7 @@ test("删除合集会连子集一起删掉", async () => {
   // 第一个删除按钮属于合集本身（合集渲染在子集之前）
   await user.click(screen.getAllByRole("button", { name: "删除任务" })[0]);
 
-  // 确认框点名会连带删除的子集数量
   expect(screen.getByRole("alertdialog")).toBeInTheDocument();
-  expect(screen.getByText(/1 个子集也会一起删除/)).toBeInTheDocument();
 
   await user.click(screen.getByRole("button", { name: "删除" }));
 

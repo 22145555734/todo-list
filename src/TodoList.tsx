@@ -208,16 +208,12 @@ const TodoItem = memo(function TodoItem({
 
 /**
  * 删除二次确认弹窗。
- * 删除不可逆，且合集会把子集一并带走，所以先问一次再执行。
+ * 只问「删不删」——事项名、子集数这些点按钮时本来就知道，不占版面。
  */
 function DeleteConfirm({
-  todo,
-  childCount,
   onConfirm,
   onCancel,
 }: {
-  todo: Todo;
-  childCount: number;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -245,15 +241,11 @@ function DeleteConfirm({
       >
         <h2
           id="delete-confirm-title"
-          className="break-all text-base font-bold text-gray-800"
+          className="text-base font-bold text-gray-800"
         >
-          确定删除「{todo.text}」吗？
+          确定删除吗？
         </h2>
-        <p
-          id="delete-confirm-desc"
-          className="mt-2 text-sm leading-relaxed text-gray-600"
-        >
-          {childCount > 0 && `它的 ${childCount} 个子集也会一起删除。`}
+        <p id="delete-confirm-desc" className="mt-2 text-sm text-gray-600">
           删除后不可恢复。
         </p>
         <div className="mt-4 flex justify-end gap-2">
@@ -345,11 +337,6 @@ export default function TodoList() {
   };
 
   const roots = useMemo(() => todos.filter((t) => t.parentId === null), [todos]);
-
-  // 从最新 todos 里查，避免持有过期快照；事项若已被删则弹窗自动消失
-  const pendingDelete = pendingDeleteId
-    ? todos.find((t) => t.id === pendingDeleteId) ?? null
-    : null;
 
   const visibleTodos = useMemo(() => {
     switch (filter) {
@@ -531,13 +518,8 @@ export default function TodoList() {
         </footer>
       )}
 
-      {pendingDelete && (
-        <DeleteConfirm
-          todo={pendingDelete}
-          childCount={childrenOf(pendingDelete.id).length}
-          onConfirm={confirmDelete}
-          onCancel={cancelDelete}
-        />
+      {pendingDeleteId && (
+        <DeleteConfirm onConfirm={confirmDelete} onCancel={cancelDelete} />
       )}
     </div>
   );
