@@ -11,7 +11,7 @@ import {
 import { useStore } from "./store";
 import { useNow } from "./useNow";
 import { formatHms, formatShort } from "./time";
-import { getLevelInfo, levelColor, levelColorText, levelFont, levelShimmer } from "./level";
+import { getLevelInfo, levelColor, levelFont, levelShimmer } from "./level";
 import type { Todo } from "./types";
 
 type Filter = "all" | "active" | "completed";
@@ -69,9 +69,9 @@ const TodoItem = memo(function TodoItem({
   const info = getLevelInfo(elapsed);
   const isMaxLevel = info.nextLevel === null;
   const badgeColor = isMaxLevel ? "" : levelColor(info.level);
-  const titleColor = isMaxLevel ? "" : levelColorText(info.level);
   const font = levelFont(info.level);
-  // 1 级与 500 级都是 null：前者纯色不动，后者走整条彩虹的 .rainbow-*
+  // 只有满级是 null（它走整条彩虹的 .rainbow-*），1~499 级都有自己的本档炫动。
+  // 所以下面凡是用到 shimmer 的地方都不必再判 isMaxLevel —— 两者互为反面。
   const shimmer = levelShimmer(info.level);
 
   const startEdit = () => {
@@ -220,36 +220,32 @@ const TodoItem = memo(function TodoItem({
             <span className="flex items-center gap-2">
               <span
                 className={`rounded-md px-2 py-0.5 font-bold leading-none text-white ${
-                  isMaxLevel ? "rainbow-bg" : shimmer ? "shimmer-bg" : ""
+                  isMaxLevel ? "rainbow-bg" : "shimmer-bg"
                 }`}
                 style={{
                   // 徽章刻意不设 font-family：数字和 "Lv." 用艺术字体不好认
                   fontSize: `${font.badgeSize}px`,
-                  ...(isMaxLevel
-                    ? {}
-                    : shimmer
-                      ? {
-                          backgroundImage: shimmer.badgeImage,
-                          animationDuration: `${shimmer.durationS}s`,
-                        }
-                      : { backgroundColor: badgeColor }),
+                  ...(shimmer
+                    ? {
+                        backgroundImage: shimmer.badgeImage,
+                        animationDuration: `${shimmer.durationS}s`,
+                      }
+                    : {}),
                 }}
               >
                 Lv.{info.level}
               </span>
               <span
-                className={`font-semibold ${isMaxLevel ? "rainbow-text" : shimmer ? "shimmer-text" : ""}`}
+                className={`font-semibold ${isMaxLevel ? "rainbow-text" : "shimmer-text"}`}
                 style={{
                   fontSize: `${font.titleSize}px`,
                   ...(font.titleFamily ? { fontFamily: font.titleFamily } : {}),
-                  ...(isMaxLevel
-                    ? {}
-                    : shimmer
-                      ? {
-                          backgroundImage: shimmer.titleImage,
-                          animationDuration: `${shimmer.durationS}s`,
-                        }
-                      : { color: titleColor }),
+                  ...(shimmer
+                    ? {
+                        backgroundImage: shimmer.titleImage,
+                        animationDuration: `${shimmer.durationS}s`,
+                      }
+                    : {}),
                 }}
               >
                 {info.title}
