@@ -38,7 +38,7 @@
     #ef4444
   );
   background-size: 200% 100%;
-  animation: rainbow-shift 1.333s linear infinite;
+  animation: rainbow-shift 1s linear infinite;
 }
 
 .rainbow-text {
@@ -56,7 +56,7 @@
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: rainbow-shift 1.333s linear infinite;
+  animation: rainbow-shift 1s linear infinite;
 }
 
 @keyframes rainbow-shift {
