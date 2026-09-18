@@ -17,7 +17,7 @@
 
 - React 18 + TypeScript 5
 - Vite 5
-- Tailwind CSS 3（**已锁定，勿升 v4** —— v4 使用原生级联层，会让部分手机内置浏览器样式全部失效，详见 `更新日志.md`）
+- Tailwind CSS 3（**已锁定，勿升 v4** —— v4 使用原生级联层，会让部分手机内置浏览器样式全部失效，详见 `docs/更新日志.md`）
 - Vitest 2 + @testing-library/react
 
 **后端**
@@ -31,11 +31,14 @@
 ### 前端
 
 ```bash
+cd frontend
 npm install       # 安装依赖
 npm run dev       # 启动开发服务器（默认 http://localhost:5173）
-npm run build     # 类型检查 + 构建
+npm run build     # 类型检查 + 构建（产物在 frontend/dist）
 npm test          # 运行测试
 ```
+
+Windows 下也可以直接双击仓库根目录的 `start-todolist.bat`，它会拉起开发服务器并打开浏览器。
 
 开发时后端 API 默认指向同源 `/api`，可通过 Vite 代理转发到 `http://localhost:8080`。
 
@@ -61,8 +64,8 @@ mvn spring-boot:run   # 需本地 MySQL，或通过环境变量指定连接
 ## Docker 部署
 
 ```bash
-# 1. 构建前端产物
-npm run build
+# 1. 构建前端产物（输出到 frontend/dist）
+cd frontend && npm run build && cd ..
 
 # 2. 准备密钥（不提交到仓库）
 cat > .env <<'EOF'
@@ -81,16 +84,20 @@ docker compose up --build -d
 ## 目录结构
 
 ```
-src/                 # 前端
-├── api.ts           # 后端 REST 接口封装
-├── token.ts         # 登录凭证（token/用户名）存取
-├── store.tsx        # 全局状态（鉴权 + todos + 计时会话）
-├── Auth.tsx         # 登录 / 注册页
-├── time.ts          # 时间分桶、统计聚合与格式化
-├── level.ts         # 等级 / 称号系统（500 级，等差数列）
-├── Stats.tsx        # 统计页（SVG 堆叠柱状图 + KPI + 图例 + 表格）
-├── TodoList.tsx     # 待办列表（计时 + 等级进度条）
-└── App.tsx          # 登录态 + 标签页导航（待办事项 / 学习统计）
+frontend/            # React 前端（自成一个 npm 项目）
+├── src/
+│   ├── api.ts       # 后端 REST 接口封装
+│   ├── token.ts     # 登录凭证（token/用户名）存取
+│   ├── store.tsx    # 全局状态（鉴权 + todos + 计时会话）
+│   ├── Auth.tsx     # 登录 / 注册页
+│   ├── time.ts      # 时间分桶、统计聚合与格式化
+│   ├── level.ts     # 等级 / 称号系统（500 级，等差数列）
+│   ├── Stats.tsx    # 统计页（SVG 堆叠柱状图 + KPI + 图例 + 表格）
+│   ├── TodoList.tsx # 待办列表（计时 + 等级进度条）
+│   └── App.tsx      # 登录态 + 标签页导航（待办事项 / 学习统计）
+├── Dockerfile       # nginx 镜像（COPY nginx.conf + dist/）
+├── nginx.conf       # 反代 /api → backend:8080
+└── index.html
 
 backend/             # Spring Boot 后端
 ├── auth/            # 注册 / 登录 + JWT 签发校验 + 安全过滤链
@@ -98,4 +105,10 @@ backend/             # Spring Boot 后端
 ├── todo/            # 待办 CRUD
 ├── session/         # 计时会话（开始 / 暂停 / 迁移时长）
 └── exception/       # 全局异常处理
+
+docs/                # 文档
+├── 更新日志.md      # 版本变更、环境约束备忘、部署信息
+└── 需求草稿-等级与称号系统.md
+
+docker-compose.yml   # mysql + backend + frontend 编排
 ```
