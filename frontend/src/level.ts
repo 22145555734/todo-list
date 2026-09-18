@@ -5,29 +5,41 @@
 const D = 90 / 499; // 每升一级增加的分钟数
 export const MAX_LEVEL = 500;
 
+// 称号字体一档一款 —— 字体族写死在表里，与 @font-face（index.css）一一对应。
+// 后缀是系统字体的后备，各自挑了气质相近的：黑体档退到无衬线，手写档退到楷体。
+// 字体来源与授权见 index.css 顶部注释。
+const FONT_SANS = 'system-ui, sans-serif';
+const FONT_MONO = 'ui-monospace, "Consolas", monospace';
+const KAI = '"KaiTi", "STKaiti", serif';
+
 export interface Rank {
   minLevel: number;
   maxLevel: number;
   title: string;
+  /** 称号字体族；null 表示沿用页面默认字体。徽章「Lv.N」不受它影响 */
+  font: string | null;
 }
 
 export const RANKS: Rank[] = [
-  { minLevel: 1, maxLevel: 50, title: "新手" },
-  { minLevel: 51, maxLevel: 100, title: "学徒" },
-  { minLevel: 101, maxLevel: 150, title: "研习者" },
-  { minLevel: 151, maxLevel: 200, title: "实践者" },
-  { minLevel: 201, maxLevel: 250, title: "能手" },
-  { minLevel: 251, maxLevel: 300, title: "资深" },
-  { minLevel: 301, maxLevel: 350, title: "顾问" },
-  { minLevel: 351, maxLevel: 400, title: "首席" },
-  { minLevel: 401, maxLevel: 499, title: "泰斗" },
-  { minLevel: 500, maxLevel: 500, title: "登峰造极" },
+  { minLevel: 1, maxLevel: 50, title: "新手", font: null },
+  { minLevel: 51, maxLevel: 100, title: "学徒", font: `"LevelXuetu", ${FONT_MONO}` },
+  { minLevel: 101, maxLevel: 150, title: "研习者", font: `"LevelYanxizhe", ${KAI}` },
+  { minLevel: 151, maxLevel: 200, title: "实践者", font: `"LevelShijianzhe", ${FONT_SANS}` },
+  { minLevel: 201, maxLevel: 250, title: "能手", font: `"LevelNengshou", ${KAI}` },
+  { minLevel: 251, maxLevel: 300, title: "资深", font: `"LevelZishen", ${KAI}` },
+  { minLevel: 301, maxLevel: 350, title: "顾问", font: `"LevelGuwen", ${KAI}` },
+  { minLevel: 351, maxLevel: 400, title: "首席", font: `"LevelShouxi", ${KAI}` },
+  { minLevel: 401, maxLevel: 499, title: "泰斗", font: `"LevelTaidou", ${KAI}` },
+  { minLevel: 500, maxLevel: 500, title: "登峰造极", font: `"LevelPeak", ${KAI}` },
 ];
 
+/** level 落在哪一档；超出 1~500 返回 undefined */
+function rankOf(level: number): Rank | undefined {
+  return RANKS.find((r) => level >= r.minLevel && level <= r.maxLevel);
+}
+
 export function titleOf(level: number): string {
-  return (
-    RANKS.find((r) => level >= r.minLevel && level <= r.maxLevel)?.title ?? ""
-  );
+  return rankOf(level)?.title ?? "";
 }
 
 /** 第 level 级耗时（分钟） */
@@ -143,17 +155,8 @@ export function levelColorText(level: number): string {
 }
 
 // 等级字体：字号随等级线性放大。字体**只作用于称号**，徽章「Lv.N」一律走页面
-// 默认字体 —— 数字与 "Lv." 用毛笔体反而不好认，也没必要。
-// 称号字体分四档递进 —— 新手（1~50）用页面默认字体，51 级起换霞鹜文楷，
-// 401 级起换马善政毛笔楷书，满级（500）换云峰飞云体。前两档是 OFL 开源字体，
-// 只嵌入用到的字符，共约 21KB，可自由子集化。
-// 满级那档的授权不允许修改字体，因此整包原样引入、不做子集（7.56MB）——
-// 它只在 500 级的称号上被引用，浏览器按需下载，低等级用户不会触发。
-// @font-face 见 index.css。系统字体名作后备，字体未加载时也能显示。
-const FONT_KAI = '"LevelKai", "KaiTi", "STKaiti", serif';
-const FONT_TAIDOU = '"LevelTaidou", "LevelKai", "KaiTi", serif';
-const FONT_PEAK = '"LevelPeak", "LevelTaidou", "LevelKai", "KaiTi", serif';
-
+// 默认字体 —— 数字与 "Lv." 用艺术字体反而不好认，也没必要。
+// 称号本身一档一款，字体族定义在上面的 RANKS 表里（@font-face 见 index.css）。
 export interface LevelFont {
   /** 徽章「Lv.N」的字号（px） */
   badgeSize: number;
@@ -170,7 +173,6 @@ export function levelFont(level: number): LevelFont {
   return {
     badgeSize: 12 + t * 5, // 12 → 17
     titleSize: 14 + t * 12, // 14 → 26
-    titleFamily:
-      lv >= MAX_LEVEL ? FONT_PEAK : lv > 400 ? FONT_TAIDOU : lv > 50 ? FONT_KAI : null,
+    titleFamily: rankOf(lv)?.font ?? null,
   };
 }

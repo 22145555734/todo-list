@@ -6,6 +6,7 @@ import {
   levelFont,
   levelMinutes,
   MAX_LEVEL,
+  RANKS,
 } from "./level";
 
 test("0 时长为新手 1 级，距下一级 15 分钟", () => {
@@ -82,14 +83,30 @@ test("新手档称号用页面默认字体（不改 font-family）", () => {
   expect(levelFont(50).titleFamily).toBeNull();
 });
 
-test("称号字体四档递进：新手默认 → 霞鹜文楷 → 马善政 → 云峰飞云体", () => {
+test("称号字体一档一款：51 级起每档换一款，满级是云峰飞云体", () => {
   // 各档的 titleFamily 都带后备字体，所以断言首选项而非包含关系
   const first = (lv: number) => levelFont(lv).titleFamily?.split(",")[0].trim();
-  expect(first(51)).toBe('"LevelKai"');
-  expect(first(400)).toBe('"LevelKai"');
-  expect(first(401)).toBe('"LevelTaidou"');
-  expect(first(499)).toBe('"LevelTaidou"');
-  expect(first(MAX_LEVEL)).toBe('"LevelPeak"');
+  const want = [
+    [51, '"LevelXuetu"'],
+    [101, '"LevelYanxizhe"'],
+    [151, '"LevelShijianzhe"'],
+    [201, '"LevelNengshou"'],
+    [251, '"LevelZishen"'],
+    [301, '"LevelGuwen"'],
+    [351, '"LevelShouxi"'],
+    [401, '"LevelTaidou"'],
+    [MAX_LEVEL, '"LevelPeak"'],
+  ] as const;
+  for (const [lv, family] of want) {
+    expect(first(lv)).toBe(family);
+    // 每档的上下界都要落在同一款字体上
+    const rank = RANKS.find((r) => lv >= r.minLevel && lv <= r.maxLevel)!;
+    expect(first(rank.minLevel)).toBe(family);
+    expect(first(rank.maxLevel)).toBe(family);
+  }
+  // 八档互不相同，没有漏改的重复项
+  const used = want.map(([, f]) => f);
+  expect(new Set(used).size).toBe(used.length);
 });
 
 test("字号随等级单调递增，1 级为 12/14，满级为 17/26", () => {
