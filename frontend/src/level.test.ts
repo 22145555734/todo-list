@@ -109,9 +109,9 @@ test("称号字体一档一款：51 级起每档换一款，满级是云峰飞�
   expect(new Set(used).size).toBe(used.length);
 });
 
-test("字号随等级单调递增，1 级为 12/14，满级为 17/26", () => {
-  expect(levelFont(1)).toMatchObject({ badgeSize: 12, titleSize: 14 });
-  expect(levelFont(MAX_LEVEL)).toMatchObject({ badgeSize: 17, titleSize: 26 });
+test("字号随等级单调递增，1 级为 10/10，满级为 18/36", () => {
+  expect(levelFont(1)).toMatchObject({ badgeSize: 10, titleSize: 10 });
+  expect(levelFont(MAX_LEVEL)).toMatchObject({ badgeSize: 18, titleSize: 36 });
   for (const lv of [1, 50, 51, 200, 400, 401, 499]) {
     expect(levelFont(lv + 1).badgeSize).toBeGreaterThan(levelFont(lv).badgeSize);
     expect(levelFont(lv + 1).titleSize).toBeGreaterThan(levelFont(lv).titleSize);
