@@ -93,3 +93,51 @@ export function getLevelInfo(totalMs: number): LevelInfo {
     remainingMs: Math.max(0, levelTotalMs - intoMs),
   };
 }
+
+// 等级主题色：绿 → 蓝 → 紫 → 金 → 红 连续渐变，1~499 级每级微变。
+// 颜色槽取游戏常见的「品质色」锚点，段内做 RGB 线性插值。
+interface ColorStop {
+  level: number;
+  r: number;
+  g: number;
+  b: number;
+}
+
+const COLOR_STOPS: ColorStop[] = [
+  { level: 1, r: 34, g: 197, b: 94 }, // 绿
+  { level: 100, r: 59, g: 130, b: 246 }, // 蓝
+  { level: 200, r: 168, g: 85, b: 247 }, // 紫
+  { level: 300, r: 245, g: 158, b: 11 }, // 金
+  { level: 400, r: 239, g: 68, b: 68 }, // 红
+  { level: 499, r: 185, g: 28, b: 28 }, // 深红
+];
+
+/** 返回 1~499 级的主题色 RGB 分量；满级由调用方改用炫彩样式，不在这里产生颜色 */
+function levelRgb(level: number): [number, number, number] {
+  const lv = Math.min(Math.max(level, 1), 499);
+  // 找 lv 所在的插值段
+  let i = 0;
+  for (let k = 0; k < COLOR_STOPS.length - 1; k++) {
+    if (lv <= COLOR_STOPS[k + 1].level) {
+      i = k;
+      break;
+    }
+  }
+  const a = COLOR_STOPS[i];
+  const b = COLOR_STOPS[i + 1];
+  const t = (lv - a.level) / (b.level - a.level);
+  const mix = (p: number, q: number) => Math.round(p + (q - p) * t);
+  return [mix(a.r, b.r), mix(a.g, b.g), mix(a.b, b.b)];
+}
+
+/** 等级主题色（徽章底 / 进度条填充用） */
+export function levelColor(level: number): string {
+  const [r, g, b] = levelRgb(level);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+/** 等级主题色的加深版（称号文字用）：绿/金等亮色直接当文字在白底上对比度不足 */
+export function levelColorText(level: number): string {
+  const [r, g, b] = levelRgb(level);
+  return `rgb(${Math.round(r * 0.72)}, ${Math.round(g * 0.72)}, ${Math.round(b * 0.72)})`;
+}
