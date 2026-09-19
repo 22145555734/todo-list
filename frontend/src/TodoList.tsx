@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type FormEvent,
   type ReactNode,
 } from "react";
@@ -14,6 +15,7 @@ import {
   MouseSensor,
   TouchSensor,
   closestCenter,
+  defaultDropAnimationSideEffects,
   useDndContext,
   useSensor,
   useSensors,
@@ -964,12 +966,43 @@ export default function TodoList() {
         {/* DragOverlay 默认不走 portal，渲染在它所在的位置 —— 与 <ul> 平级才不会被
             Collapsible 的 overflow:hidden 裁掉。它必须常驻挂载、只让内容随 activeId 变：
             整个卸载掉，放下时的下落动画就不会播。 */}
-        {/* 放下后浮层飞回槽位那一段，时长见 `DROP_MS`。
-            只给 duration，keyframes / sideEffects 仍走库的默认值（`createDefaultDropAnimation`
-            是 `{...默认, ...传入}`，漏传的字段不会丢）。 */}
-        <DragOverlay dropAnimation={{ duration: DROP_MS }}>
+        {/* 放下后浮层飞回槽位那一段，时长见 `DROP_MS`。keyframes 仍走库的默认值
+            （`createDefaultDropAnimation` 是 `{...默认, ...传入}`，漏传的字段不会丢）。 */}
+        <DragOverlay
+          dropAnimation={{
+            duration: DROP_MS,
+            // 参数要**整个透传**给库的默认实现 —— 它要的不止 active / dragOverlay，
+            // 还有 draggableNodes、droppableContainers、measuringConfiguration
+            sideEffects: (params) => {
+              // 库默认会把原位置那张隐掉，这里得原样保留
+              const cleanup = defaultDropAnimationSideEffects({
+                styles: { active: { opacity: "0" } },
+              })(params);
+
+              // 让浮层里的框在落地过程中把阴影收掉（见 index.css 的 `.drag-settling`）。
+              //
+              // **必须直接动 DOM，React 这条路走不通**：库的 `AnimationManager` 在放下时会
+              // 克隆一份前一帧的 children 快照继续渲染、等动画跑完才卸载，整个浮层子树在这
+              // 期间是**冻结**的 —— 改 state 换 className 传不进去。
+              //
+              // 也**不做清理**：这棵子树紧接着就被卸载了，摘掉类反而会闪一帧弹回大阴影。
+              params.dragOverlay.node.classList.add("drag-settling");
+
+              return () => cleanup?.();
+            },
+          }}
+        >
           {activeTodo ? (
-            <div className="pointer-events-none">
+            /* 时长从 TS 常量下发给 CSS（`--lift-ms` / `--drop-ms`），别在 index.css 里再抄一遍 */
+            <div
+              className="pointer-events-none"
+              style={
+                {
+                  "--lift-ms": `${FOLD_MS}ms`,
+                  "--drop-ms": `${DROP_MS}ms`,
+                } as CSSProperties
+              }
+            >
               {/* `drag-lift`（放大 + 上移 + 阴影）**必须挂在每个框自己身上，不能挂在这层外壳上**：
                   外壳把卡片之间的空隙也包进去，阴影会从缝里透出来连成一整块，看着像一块大白板
                   浮起来，而不是几个框浮起来。
