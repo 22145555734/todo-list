@@ -14,6 +14,7 @@ import {
   MouseSensor,
   TouchSensor,
   closestCenter,
+  useDndContext,
   useSensor,
   useSensors,
   type CollisionDetection,
@@ -349,6 +350,45 @@ function SortableRow({
   );
 }
 
+/**
+ * 拖拽期间被拖那一行的子任务正在收起，节点在逐帧变矮 —— 而 dnd-kit **只在「拖拽开始」
+ * 和「droppable 增删」时重测各行矩形**（`useDroppableMeasuring`），它不认节点变矮。
+ * 不催它的话，邻居的让位距离会一直按「还没收起」的旧矩形算，比不收起还歪。
+ *
+ * 三个前提都查过库的产物，不是猜的：
+ * - `droppable.measure` 是 `getTransformAgnosticClientRect`（`ignoreTransform: true`），
+ *   会**扣掉元素自身的位移 transform** —— 所以反复重测是收敛的，不会把让位的
+ *   transform 叠加进去
+ * - `frequency` 默认是字符串 `'optimized'`，而定时重测那个 effect 有
+ *   `typeof frequency !== 'number'` 的早退 —— 库自己**没有任何周期性重测**，
+ *   `MeasuringStrategy` 的三个值都只影响「什么时候允许测」，不影响「多久测一次」
+ * - 传**空数组**给 `measureDroppableContainers()` 才会全量重测（传了 id 就是「只测队列里的、
+ *   其余复用缓存」）。类型声明把这个参数写成必填（`store/types.d.ts:81`），而实现里有
+ *   `ids === void 0 → []` 的兜底 —— 两者对不上，所以这里显式传 `[]`
+ *
+ * **只跑收起动画那么长，不是整个拖拽过程**：每测一次都要重渲染整个列表，全程 60fps
+ * 地跑在低端机上会掉帧。
+ */
+function RemeasureWhileCollapsing({ active }: { active: boolean }) {
+  const { measureDroppableContainers } = useDndContext();
+
+  useEffect(() => {
+    if (!active) return;
+    let raf = requestAnimationFrame(function tick() {
+      measureDroppableContainers([]);
+      raf = requestAnimationFrame(tick);
+    });
+    // 与 Collapsible 的收起等长：250ms 高度过渡 + 300ms 兜底定时
+    const timer = window.setTimeout(() => cancelAnimationFrame(raf), 300);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(timer);
+    };
+  }, [active, measureDroppableContainers]);
+
+  return null;
+}
+
 /** 可展开/收起容器：展开时做高度入场动画，收起时高度归零、动画结束后卸载内容 */
 function Collapsible({
   open,
@@ -631,6 +671,13 @@ export default function TodoList() {
 
   const activeTodo = activeId ? todos.find((t) => t.id === activeId) ?? null : null;
 
+  // 拖的这一行确实有子任务、而且当前是展开的 —— 只有这种情况才会有收起动画，
+  // 也才需要逐帧重测
+  const collapsing =
+    activeId !== null &&
+    !collapsedIds.has(activeId) &&
+    childrenOf(activeId).length > 0;
+
   const roots = useMemo(() => todos.filter((t) => t.parentId === null), [todos]);
 
   const visibleTodos = useMemo(() => {
@@ -717,6 +764,7 @@ export default function TodoList() {
         onDragEnd={onDragEnd}
         onDragCancel={() => setActiveId(null)}
       >
+        <RemeasureWhileCollapsing active={collapsing} />
         <SortableContext
           items={visibleTodos.map((t) => t.id)}
           strategy={verticalListSortingStrategy}
@@ -738,18 +786,14 @@ export default function TodoList() {
                     parentId={null}
                     card={renderCard(todo)}
                   >
-                    {/* 拖这一行时把它的子任务整个卸掉，落地再长回来。
-                        **必须是卸载，不能改成 `open={false}` 交给 Collapsible 去收**：
-                        dnd-kit 只在「拖拽开始」和「droppable 增删」时重测各行矩形
-                        （useDroppableMeasuring），**不认节点变矮**。走 Collapsible 那条路
-                        是 250ms 高度动画 —— 那段时间 DOM 已经矮了、矩形还是旧的，邻居的
-                        让位距离正好歪在这段窗口里。卸载会让子任务的 droppable 注销
-                        （UnregisterDroppable 换新 map），触发一次全量重测，量到的就是
-                        收起后的布局。重挂载时 Collapsible 的 first.current 为真、不做入场
-                        动画，所以落地也是干脆地长回来。
-                        本来就没展开的行（在 collapsedIds 里）本来就没渲染内容，不受影响。 */}
-                    {children.length > 0 && activeId !== todo.id && (
-                      <Collapsible open={!collapsedIds.has(todo.id)}>
+                    {/* 拖这一行时把它的子任务收起来，落地再展开 —— 走 Collapsible 正常的
+                        收起/展开动画，和手点「收起」看起来一样。
+                        本来就没展开的行 open 本来就是 false，不受影响。
+                        收起动画期间要靠 <RemeasureWhileCollapsing> 催 dnd-kit 重测，原因见那边。 */}
+                    {children.length > 0 && (
+                      <Collapsible
+                        open={!collapsedIds.has(todo.id) && activeId !== todo.id}
+                      >
                         <SortableContext
                           items={children.map((c) => c.id)}
                           strategy={verticalListSortingStrategy}
