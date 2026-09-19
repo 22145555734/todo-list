@@ -303,14 +303,25 @@ const TodoItem = memo(function TodoItem({
 /**
  * 收起 / 展开那一下的时长（毫秒）。
  *
- * **四处必须跟着它走，不能各写各的**：`Collapsible` 的高度过渡、浮层里 `OverlayFolded`
- * 的折叠、拖拽期间 `<RemeasureWhileCollapsing>` 逐帧重测的窗口、以及放下后
- * `DragOverlay` 的 `dropAnimation` —— 它们本来就是在演同一件事（松手 → 落地 → 展开），
- * 时长对不上就会各跑各的。
+ * **三处必须跟着它走，不能各写各的**：`Collapsible` 的高度过渡、浮层里 `OverlayFolded`
+ * 的折叠、拖拽期间 `<RemeasureWhileCollapsing>` 逐帧重测的窗口 —— 列表和浮层演的是
+ * 同一件事，时长对不上就会各收各的。
+ *
+ * 松开鼠标之后跑的是两段**并行**的动画：浮层飞回槽位（见 `DROP_MS`）和列表那一行展开
+ * （本常量）。两者都从松手那一刻起算，谁长谁定整段的手感。
  */
 const FOLD_MS = 140;
 /** CSS 过渡跑完之后兜底卸载 / 落位的定时。比过渡略长一点，等 `transitionend` 先到。 */
 const FOLD_SETTLE_MS = FOLD_MS + 50;
+
+/**
+ * 放下后浮层飞回槽位那一段的时长（毫秒）。库默认 250。
+ *
+ * 有意**比 `FOLD_MS` 长**：收起 / 展开是原地的高度变化，快了不觉得；浮层是从手指那儿
+ * 飞回落点的位移，同样时长会显得「啪」一下落下来。205 是用户真机上试出来的数，
+ * 别按比例去推。
+ */
+const DROP_MS = 205;
 
 /**
  * 一行可拖拽的事项。
@@ -930,11 +941,10 @@ export default function TodoList() {
         {/* DragOverlay 默认不走 portal，渲染在它所在的位置 —— 与 <ul> 平级才不会被
             Collapsible 的 overflow:hidden 裁掉。它必须常驻挂载、只让内容随 activeId 变：
             整个卸载掉，放下时的下落动画就不会播。 */}
-        {/* 放下后浮层飞回槽位那一段，库默认 250ms —— 落点通常就在手边，飞不了多远，
-            250ms 只会让人觉得「松了手还在飘」。跟收起 / 展开共用 `FOLD_MS`，两段同时跑完。
+        {/* 放下后浮层飞回槽位那一段，时长见 `DROP_MS`。
             只给 duration，keyframes / sideEffects 仍走库的默认值（`createDefaultDropAnimation`
             是 `{...默认, ...传入}`，漏传的字段不会丢）。 */}
-        <DragOverlay dropAnimation={{ duration: FOLD_MS }}>
+        <DragOverlay dropAnimation={{ duration: DROP_MS }}>
           {activeTodo ? (
             <div className="pointer-events-none">
               {/* `drag-lift`（放大 + 上移 + 阴影）**必须挂在每个框自己身上，不能挂在这层外壳上**：
