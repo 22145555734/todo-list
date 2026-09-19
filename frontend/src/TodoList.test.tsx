@@ -383,6 +383,38 @@ test("徽章「Lv.N」走页面默认字体，艺术字体只给称号", async (
   expect(title.style.fontFamily).toContain("LevelPeak");
 });
 
+test("等级进度条与徽章共用同一套炫动（渐变与时长都一致）", async () => {
+  // 2 小时 → Lv.8，进度约 0.69：既不是满级（走彩虹），进度也没满
+  const TWO_HOURS = 2 * 60 * 60 * 1000;
+  localStorage.setItem("todo-token", "test-token");
+  __seed(
+    [{ id: "t1", text: "数学", completed: false, parentId: null }],
+    [
+      {
+        id: "s1",
+        todoId: "t1",
+        subject: "数学",
+        rootSubject: null,
+        start: 0,
+        end: TWO_HOURS,
+      },
+    ],
+  );
+  const { container } = renderTodoList();
+
+  const badge = await screen.findByText(/^Lv\.\d+$/);
+  const fill = container.querySelector<HTMLElement>("div.h-full.rounded-full");
+  expect(fill).not.toBeNull();
+
+  // 进度条不再是纯色填充，而是和徽章同一档的流动渐变
+  expect(fill!.className).toContain("shimmer-bg");
+  expect(fill!.style.animationDuration).toBe(badge.style.animationDuration);
+  expect(fill!.style.backgroundImage).toBe(badge.style.backgroundImage);
+  expect(badge.style.backgroundImage).toContain("linear-gradient"); // 防止上面那条空对空
+  // 宽度仍是进度本身，没被炫动改掉
+  expect(fill!.style.width).toMatch(/%$/);
+});
+
 test("加子任务时提示迁移合集已有的计时", async () => {
   const user = userEvent.setup();
   renderTodoList();

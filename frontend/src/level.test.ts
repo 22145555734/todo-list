@@ -121,37 +121,56 @@ test("炫动渐变首尾同色，且只用本位色的 hsl（中间以本位色�
   }
 });
 
-test("炫动幅度随等级线性递增：1 级 ±5°/±8%，499 级 ±100°/±20%", () => {
-  // 解析 badgeImage 的前三个 hsl 停靠点（lo / mid / hi），取色相 h 与明度 l
-  const parse = (lv: number) => {
-    const img = levelShimmer(lv)!.badgeImage;
-    return img
-      .match(/hsl\(([\d.]+), ([\d.]+)%, ([\d.]+)%\)/g)!
-      .slice(0, 3)
-      .map((s) => {
-        const m = s.match(/hsl\(([\d.]+), ([\d.]+)%, ([\d.]+)%\)/)!;
-        return { h: Number(m[1]), l: Number(m[3]) };
-      });
-  };
-  // 色相会跨 0°/360°，用最短环向差（正值 = 偏了多少度）。单侧偏移 ≤100° < 180°，不会反转。
+// 从 badgeImage 反推实际的炫动幅度（单侧偏移），供下面几条幅度测试共用
+function shimmerOffsets(lv: number) {
+  const stops = levelShimmer(lv)!
+    .badgeImage.match(/hsl\(([\d.]+), ([\d.]+)%, ([\d.]+)%\)/g)!
+    .slice(0, 3) // lo / mid / hi
+    .map((s) => {
+      const m = s.match(/hsl\(([\d.]+), ([\d.]+)%, ([\d.]+)%\)/)!;
+      return { h: Number(m[1]), l: Number(m[3]) };
+    });
+  // 色相会跨 0°/360°，用最短环向差（正值 = 偏了多少度）。单侧偏移 < 180°，不会反转。
   const hueGap = (a: number, b: number) => ((a - b + 540) % 360) - 180;
-  // 单侧偏移：mid 相对 lo 的色相/明度差，即 hueDeg / lightPct
-  const offsets = (lv: number) => {
-    const [lo, mid] = parse(lv);
-    return { hue: hueGap(mid.h, lo.h), light: mid.l - lo.l };
-  };
-  const l1 = offsets(1);
-  const l499 = offsets(499);
-  expect(l1.hue).toBeCloseTo(5, 0);
-  expect(l1.light).toBeCloseTo(8, 0);
-  expect(l499.hue).toBeCloseTo(100, 0);
-  expect(l499.light).toBeCloseTo(20, 0);
-  // 中间等级严格夹在两端之间
-  const mid = offsets(250);
-  expect(mid.hue).toBeGreaterThan(l1.hue);
-  expect(mid.hue).toBeLessThan(l499.hue);
-  expect(mid.light).toBeGreaterThan(l1.light);
-  expect(mid.light).toBeLessThan(l499.light);
+  return { hue: hueGap(stops[1].h, stops[0].h), light: stops[1].l - stops[0].l };
+}
+
+// 容差取 0.5：hsl() 只序列化到 1 位小数，两个停靠点相减后回读有约 0.1° 的量化误差。
+test("明度偏移所有等级一律 ±6%，不随等级变", () => {
+  for (const lv of [1, 2, 100, 250, 251, 300, 346, 400, 401, 499]) {
+    expect(shimmerOffsets(lv).light).toBeCloseTo(6, 0);
+  }
+  // 逐级断言相邻等级之间没有明度差 —— 防止哪天又悄悄插值进来
+  for (const lv of [1, 50, 150, 250, 300, 350, 400, 450]) {
+    expect(shimmerOffsets(lv + 1).light).toBeCloseTo(shimmerOffsets(lv).light, 1);
+  }
+});
+
+test("色相偏移 400 级及以下恒为 ±8°，401~499 线性升到 ±30°", () => {
+  // 平段：400 级（含）之前纹丝不动 —— 全部 400 级逐级断言，这是本版最容易被改坏的地方
+  for (let lv = 1; lv <= 400; lv++) {
+    expect(shimmerOffsets(lv).hue).toBeCloseTo(8, 0);
+  }
+  // 终点
+  expect(shimmerOffsets(499).hue).toBeCloseTo(30, 0);
+  // 中段线性：450 级 = 8 + (450-400)/99 * 22 ≈ 19.11
+  expect(shimmerOffsets(450).hue).toBeCloseTo(19.11, 0);
+  // 边界连续：400 → 401 没有台阶（斜率约 0.222°/级）
+  expect(shimmerOffsets(401).hue - shimmerOffsets(400).hue).toBeLessThan(0.4);
+  // 401 起逐级单调不降，且每级增量都不大（不会跳变）。
+  // 容差 0.11 = 一个量化步长：幅度本身是严格单调的，但两个停靠点各自被序列化到 1 位小数，
+  // 反解回来的差值带约 1e-13 的浮点噪声，回读值会在 0.1° 的两侧跳。
+  // 本版斜率 0.222°/级，量化后相邻两级大多能区分开，但仍不该卡死 ≥
+  for (let lv = 400; lv < 499; lv++) {
+    expect(shimmerOffsets(lv + 1).hue).toBeGreaterThan(shimmerOffsets(lv).hue - 0.11);
+  }
+  for (const lv of [400, 420, 450, 470, 498]) {
+    expect(shimmerOffsets(lv + 1).hue - shimmerOffsets(lv).hue).toBeLessThan(0.4);
+  }
+  // 每一级都还在动，没有「完全静止」的等级（满级除外，它走彩虹）
+  for (const lv of [1, 250, 400, 499]) {
+    expect(new Set(levelShimmer(lv)!.badgeImage.match(/hsl\([^)]*\)/g)!).size).toBeGreaterThan(1);
+  }
 });
 
 test("字号随等级单调递增，1 级为 10/10，满级为 18/36", () => {
