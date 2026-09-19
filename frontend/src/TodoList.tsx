@@ -920,16 +920,21 @@ export default function TodoList() {
             整个卸载掉，放下时的下落动画就不会播。 */}
         <DragOverlay>
           {activeTodo ? (
-            <div className="drag-lift pointer-events-none">
-              {renderCard(activeTodo)}
-              {/* 子任务跟着卡片一起浮起来，然后在浮的过程中收掉。本来就收起的合集不带这一份 ——
-                  「如果子任务本身就是合起来的，则不用管」。 */}
+            <div className="pointer-events-none">
+              {/* `drag-lift`（放大 + 上移 + 阴影）**必须挂在每个框自己身上，不能挂在这层外壳上**：
+                  外壳把卡片之间的空隙也包进去，阴影会从缝里透出来连成一整块，看着像一块大白板
+                  浮起来，而不是几个框浮起来。
+                  子任务那一份不带列表里的缩进和左边那条蓝线（`border-l-2 border-blue-100`）——
+                  那是列表的装饰，跟着浮起来就露馅了。本来就收起的合集不带这一份子任务。 */}
+              <div className="drag-lift">{renderCard(activeTodo)}</div>
               {!collapsedIds.has(activeTodo.id) &&
                 overlayChildren.length > 0 && (
                   <OverlayFolded>
-                    <ul className="ml-3 mt-2 space-y-2 border-l-2 border-blue-100 pl-3">
+                    <ul className="mt-2 space-y-2">
                       {overlayChildren.map((c) => (
-                        <li key={c.id}>{renderCard(c)}</li>
+                        <li key={c.id} className="drag-lift">
+                          {renderCard(c)}
+                        </li>
                       ))}
                     </ul>
                   </OverlayFolded>
