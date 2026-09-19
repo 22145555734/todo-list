@@ -135,18 +135,37 @@ function shimmerOffsets(lv: number) {
   return { hue: hueGap(stops[1].h, stops[0].h), light: stops[1].l - stops[0].l };
 }
 
-// 这条是 2026-09-19 那一天的护栏。当天试了四版「幅度随等级变」，用户逐版否掉，
-// 最后回到写死的 ±8°/±14°。容差取 0.5：hsl() 只序列化到 1 位小数，
-// 两个停靠点相减后回读有约 0.1° 的量化误差。
-test("炫动幅度写死 ±8°/±14%，所有等级一个样", () => {
+// 容差取 0.5：hsl() 只序列化到 1 位小数，两个停靠点相减后回读有约 0.1° 的量化误差。
+test("明度偏移所有等级一律 ±6%，不随等级变", () => {
   for (const lv of [1, 2, 100, 250, 251, 300, 346, 400, 401, 499]) {
-    expect(shimmerOffsets(lv).hue).toBeCloseTo(8, 0);
-    expect(shimmerOffsets(lv).light).toBeCloseTo(14, 0);
+    expect(shimmerOffsets(lv).light).toBeCloseTo(6, 0);
   }
-  // 相邻等级之间也没有任何幅度变化 —— 逐级断言，防止哪天又悄悄插值进来
+  // 逐级断言相邻等级之间没有明度差 —— 防止哪天又悄悄插值进来
   for (const lv of [1, 50, 150, 250, 300, 350, 400, 450]) {
-    expect(shimmerOffsets(lv + 1).hue).toBeCloseTo(shimmerOffsets(lv).hue, 1);
     expect(shimmerOffsets(lv + 1).light).toBeCloseTo(shimmerOffsets(lv).light, 1);
+  }
+});
+
+test("色相偏移 250 级及以下恒为 ±8°，251~499 线性升到 ±20°", () => {
+  // 平段：250 级（含）之前纹丝不动
+  for (const lv of [1, 2, 50, 100, 200, 250]) {
+    expect(shimmerOffsets(lv).hue).toBeCloseTo(8, 0);
+  }
+  // 终点
+  expect(shimmerOffsets(499).hue).toBeCloseTo(20, 0);
+  // 中段线性：350 级 = 8 + (350-250)/249 * 12 ≈ 12.82
+  expect(shimmerOffsets(350).hue).toBeCloseTo(12.82, 0);
+  // 边界连续：250 → 251 没有台阶（斜率只有约 0.048°/级）
+  expect(shimmerOffsets(251).hue - shimmerOffsets(250).hue).toBeLessThan(0.15);
+  // 251 起逐级单调不降，且每级增量都很小（不会跳变）。
+  // 容差 0.11 = 一个量化步长：幅度本身是严格单调的，但两个停靠点各自被序列化到 1 位小数，
+  // 反解回来的差值带约 1e-13 的浮点噪声（实测 8.299999999999955 vs 8.300000000000011），
+  // 卡死 ≥ 会因这点噪声假挂
+  for (let lv = 250; lv < 499; lv++) {
+    expect(shimmerOffsets(lv + 1).hue).toBeGreaterThan(shimmerOffsets(lv).hue - 0.11);
+  }
+  for (const lv of [250, 300, 350, 400, 450, 498]) {
+    expect(shimmerOffsets(lv + 1).hue - shimmerOffsets(lv).hue).toBeLessThan(0.15);
   }
   // 每一级都还在动，没有「完全静止」的等级（满级除外，它走彩虹）
   for (const lv of [1, 250, 300, 499]) {

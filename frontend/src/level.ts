@@ -148,15 +148,19 @@ export function levelColor(level: number): string {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
-// 等级炫动：1~499 级在**自己的色域内**向右流动，速度随等级线性递增；500 级走整条彩虹
+// 等级炫动：1~499 级在**自己的色域内**向右流动；500 级走整条彩虹
 // （`.rainbow-*` 类，1.2 周期/秒 = 0.833s，那个值定义在 index.css 里，本文件不参与）。
 //
-// 幅度**写死**（见下面的 SHIMMER_HUE_DEG / SHIMMER_LIGHT_PCT），不随等级变 —— 这是 2026-09-19
-// 折腾一整天后的结论：那天试过「幅度随等级递增」（第十九期，499 级 ±100°/±20%）、收窄到
-// ±70°/±13%、给资深~首席那三档额外减 50°、以及把明暗偏移全局归零，用户逐版看下来
-// 全部否掉，最后说「好难看，改回最初那版」。所以这里回到长期以来的那套值。
-// **不要再自作主张让幅度随等级变** —— 每一版都做了完整验证（测试 + 逐像素采样预览图），
-// 问题不在实现，在这个方向本身。
+// 「速度」与「色相幅度」都随等级变，「明度幅度」不随等级变。三者分开看：
+//
+// 明度：所有等级一律 ±6%（SHIMMER_LIGHT_PCT），2026-09-19 用户点名「正负14全改成正负6」。
+//
+// 色相：250 级及以下恒定 ±8°，251~499 线性升到 ±20°（下面 HUE_* 三个常量）。
+//   这是用户点名要的，不是自作主张。但要注意它与当天被否掉的那版**方向相同、斜率差很多**：
+//   被否的是「1 级 ±5° 一路涨到 499 级 ±100°」，色相扫过 200° 糊成彩虹；这一版跨度只有 12°，
+//   且前 250 级纹丝不动。**不要再自作主张把斜率放大** —— 那天试过四版（±100°、收窄到
+//   ±70°、资深~首席再减 50°、明暗全局归零），每版都做了完整验证（测试 + 逐像素采样预览图），
+//   每版都被否，问题不在实现而在幅度本身。
 //
 // 「速度」以每秒跑完几个渐变周期计。两端点由用户直接钉死，中间按等级线性插值：
 //   1 级   ：20 秒一圈（0.05 周期/秒）—— 本期之前是「完全不动」，用户要求给一档可见的慢速
@@ -171,9 +175,21 @@ export function levelColor(level: number): string {
 const LV1_CYCLES_PER_SEC = 1 / 20; // 0.05
 const LV499_CYCLES_PER_SEC = 1 / 1.145; // ≈ 0.8734
 
-/** 炫动幅度：色相左右各偏这么多度、明度上下各偏这么多个百分点 —— 即「保持在自己的色域附近」 */
-const SHIMMER_HUE_DEG = 8;
-const SHIMMER_LIGHT_PCT = 14;
+/** 明度偏移：上下各偏这么多百分点，**所有等级一个样** */
+const SHIMMER_LIGHT_PCT = 6;
+
+// 色相偏移：250 级及以下恒定 8°，251~499 线性升到 20°。
+// 斜率 = 12° / 249 级 ≈ 0.048°/级 —— 小到相邻两级在序列化后常常同串，是刻意的缓。
+const HUE_FLAT_UNTIL = 250;
+const HUE_FLAT_DEG = 8;
+const HUE_MAX_DEG = 20;
+
+/** 第 level 级的色相单侧偏移（度）。调用方已保证 level 在 1~499 */
+function hueDeg(level: number): number {
+  if (level <= HUE_FLAT_UNTIL) return HUE_FLAT_DEG;
+  const t = (level - HUE_FLAT_UNTIL) / (MAX_LEVEL - 1 - HUE_FLAT_UNTIL);
+  return HUE_FLAT_DEG + t * (HUE_MAX_DEG - HUE_FLAT_DEG);
+}
 
 function toHsl(r: number, g: number, b: number): [number, number, number] {
   const [rn, gn, bn] = [r / 255, g / 255, b / 255];
@@ -197,11 +213,11 @@ function hsl(h: number, s: number, l: number): string {
 }
 
 /** 以 rgb 为底色做「左偏暗 → 本色 → 右偏亮 → 本色 → 左偏暗」的渐变，首尾同色 */
-function shimmerGradient(rgb: [number, number, number]): string {
+function shimmerGradient(rgb: [number, number, number], hue: number): string {
   const [h, s, l] = toHsl(...rgb);
-  const lo = hsl(h - SHIMMER_HUE_DEG, s, l - SHIMMER_LIGHT_PCT);
+  const lo = hsl(h - hue, s, l - SHIMMER_LIGHT_PCT);
   const mid = hsl(h, s, l);
-  const hi = hsl(h + SHIMMER_HUE_DEG, s, l + SHIMMER_LIGHT_PCT);
+  const hi = hsl(h + hue, s, l + SHIMMER_LIGHT_PCT);
   // 首尾同为 lo：配合 background-size:200%，向右滚一个周期即可无缝衔接
   return `linear-gradient(90deg, ${lo}, ${mid}, ${hi}, ${mid}, ${lo})`;
 }
@@ -227,9 +243,13 @@ export function levelShimmer(level: number): LevelShimmer | null {
   const cyclesPerSec =
     LV1_CYCLES_PER_SEC +
     ((lv - 1) / (MAX_LEVEL - 2)) * (LV499_CYCLES_PER_SEC - LV1_CYCLES_PER_SEC);
+  const hue = hueDeg(lv);
   return {
-    badgeImage: shimmerGradient([r, g, b]),
-    titleImage: shimmerGradient([r, g, b].map((c) => Math.round(c * 0.72)) as [number, number, number]),
+    badgeImage: shimmerGradient([r, g, b], hue),
+    titleImage: shimmerGradient(
+      [r, g, b].map((c) => Math.round(c * 0.72)) as [number, number, number],
+      hue,
+    ),
     // 时长是速度的倒数
     durationS: 1 / cyclesPerSec,
   };
