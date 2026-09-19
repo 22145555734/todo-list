@@ -173,6 +173,25 @@ const LV499_HUE_DEG = 70;
 const LV1_LIGHT_PCT = 8;
 const LV499_LIGHT_PCT = 13;
 
+// 资深 / 顾问 / 首席三档（251~400 级）再额外收窄一档 —— 用户要求这一段减 20°/5%。
+// **两端各留一段过渡**，否则 250→251 与 400→401 会各出现一次 20° 的台阶：
+// 相邻两级看起来明显不同，升级瞬间幅度突变。渐入渐出后两处都连续
+// （250→251 是 37.5°→37.6°，400→401 是 57.1°→57.2°），中段仍是完整的 -20°/-5%。
+const TRIM_FROM = 251;
+const TRIM_TO = 400;
+const TRIM_HUE_DEG = 20;
+const TRIM_LIGHT_PCT = 5;
+const TRIM_FADE_IN = 9; // 251~260 渐入
+const TRIM_FADE_OUT = 10; // 390~400 渐出
+
+/** 251~400 段的减幅权重 0~1：两端线性渐入渐出，中段取满 */
+function trimWeight(lv: number): number {
+  if (lv < TRIM_FROM || lv > TRIM_TO) return 0;
+  if (lv < TRIM_FROM + TRIM_FADE_IN) return (lv - TRIM_FROM) / TRIM_FADE_IN;
+  if (lv > TRIM_TO - TRIM_FADE_OUT) return (TRIM_TO - lv) / TRIM_FADE_OUT;
+  return 1;
+}
+
 function toHsl(r: number, g: number, b: number): [number, number, number] {
   const [rn, gn, bn] = [r / 255, g / 255, b / 255];
   const max = Math.max(rn, gn, bn);
@@ -225,8 +244,11 @@ export function levelShimmer(level: number): LevelShimmer | null {
   const t = (lv - 1) / (MAX_LEVEL - 2);
   const cyclesPerSec =
     LV1_CYCLES_PER_SEC + t * (LV499_CYCLES_PER_SEC - LV1_CYCLES_PER_SEC);
-  const hueDeg = LV1_HUE_DEG + t * (LV499_HUE_DEG - LV1_HUE_DEG);
-  const lightPct = LV1_LIGHT_PCT + t * (LV499_LIGHT_PCT - LV1_LIGHT_PCT);
+  const trim = trimWeight(lv);
+  const hueDeg =
+    LV1_HUE_DEG + t * (LV499_HUE_DEG - LV1_HUE_DEG) - trim * TRIM_HUE_DEG;
+  const lightPct =
+    LV1_LIGHT_PCT + t * (LV499_LIGHT_PCT - LV1_LIGHT_PCT) - trim * TRIM_LIGHT_PCT;
   return {
     badgeImage: shimmerGradient([r, g, b], hueDeg, lightPct),
     titleImage: shimmerGradient([r, g, b].map((c) => Math.round(c * 0.72)) as [number, number, number], hueDeg, lightPct),

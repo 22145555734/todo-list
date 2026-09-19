@@ -121,37 +121,64 @@ test("炫动渐变首尾同色，且只用本位色的 hsl（中间以本位色�
   }
 });
 
-test("炫动幅度随等级线性递增：1 级 ±5°/±8%，499 级 ±70°/±13%", () => {
-  // 解析 badgeImage 的前三个 hsl 停靠点（lo / mid / hi），取色相 h 与明度 l
-  const parse = (lv: number) => {
-    const img = levelShimmer(lv)!.badgeImage;
-    return img
-      .match(/hsl\(([\d.]+), ([\d.]+)%, ([\d.]+)%\)/g)!
-      .slice(0, 3)
-      .map((s) => {
-        const m = s.match(/hsl\(([\d.]+), ([\d.]+)%, ([\d.]+)%\)/)!;
-        return { h: Number(m[1]), l: Number(m[3]) };
-      });
-  };
-  // 色相会跨 0°/360°，用最短环向差（正值 = 偏了多少度）。单侧偏移 ≤100° < 180°，不会反转。
+// 从 badgeImage 反推实际的炫动幅度（单侧偏移），供下面几条幅度测试共用
+function shimmerOffsets(lv: number) {
+  const stops = levelShimmer(lv)!
+    .badgeImage.match(/hsl\(([\d.]+), ([\d.]+)%, ([\d.]+)%\)/g)!
+    .slice(0, 3) // lo / mid / hi
+    .map((s) => {
+      const m = s.match(/hsl\(([\d.]+), ([\d.]+)%, ([\d.]+)%\)/)!;
+      return { h: Number(m[1]), l: Number(m[3]) };
+    });
+  // 色相会跨 0°/360°，用最短环向差（正值 = 偏了多少度）。单侧偏移 < 180°，不会反转。
   const hueGap = (a: number, b: number) => ((a - b + 540) % 360) - 180;
-  // 单侧偏移：mid 相对 lo 的色相/明度差，即 hueDeg / lightPct
-  const offsets = (lv: number) => {
-    const [lo, mid] = parse(lv);
-    return { hue: hueGap(mid.h, lo.h), light: mid.l - lo.l };
-  };
-  const l1 = offsets(1);
-  const l499 = offsets(499);
+  return { hue: hueGap(stops[1].h, stops[0].h), light: stops[1].l - stops[0].l };
+}
+
+test("炫动幅度随等级线性递增：1 级 ±5°/±8%，499 级 ±70°/±13%", () => {
+  const l1 = shimmerOffsets(1);
+  const l499 = shimmerOffsets(499);
   expect(l1.hue).toBeCloseTo(5, 0);
   expect(l1.light).toBeCloseTo(8, 0);
   expect(l499.hue).toBeCloseTo(70, 0);
   expect(l499.light).toBeCloseTo(13, 0);
-  // 中间等级严格夹在两端之间
-  const mid = offsets(250);
+  // 中间等级严格夹在两端之间（250 不在收窄段内，仍是纯线性值）
+  const mid = shimmerOffsets(250);
   expect(mid.hue).toBeGreaterThan(l1.hue);
   expect(mid.hue).toBeLessThan(l499.hue);
   expect(mid.light).toBeGreaterThan(l1.light);
   expect(mid.light).toBeLessThan(l499.light);
+});
+
+test("资深~首席（251~400）额外减 20°/5%，两端渐入渐出不留台阶", () => {
+  // 线性基线：不收窄时该级应有的幅度
+  const base = (lv: number) => ({
+    hue: 5 + ((lv - 1) / 498) * 65,
+    light: 8 + ((lv - 1) / 498) * 5,
+  });
+  // 容差取 0.5°，因为 hsl() 只序列化到 1 位小数，两个停靠点相减后回读有约 0.1° 的量化误差
+  const near = (got: number, want: number) => expect(got).toBeCloseTo(want, 0);
+  // 中段（260~390）取满 -20°/-5%
+  for (const lv of [260, 300, 350, 390]) {
+    near(shimmerOffsets(lv).hue, base(lv).hue - 20);
+    near(shimmerOffsets(lv).light, base(lv).light - 5);
+  }
+  // 段外完全不受影响
+  for (const lv of [250, 401, 499]) {
+    near(shimmerOffsets(lv).hue, base(lv).hue);
+    near(shimmerOffsets(lv).light, base(lv).light);
+  }
+  // 两处边界都连续 —— 这是选「渐入渐出」而非「直接减」的全部意义
+  for (const [a, b] of [[250, 251], [400, 401]] as const) {
+    expect(Math.abs(shimmerOffsets(a).hue - shimmerOffsets(b).hue)).toBeLessThan(0.5);
+    expect(Math.abs(shimmerOffsets(a).light - shimmerOffsets(b).light)).toBeLessThan(0.5);
+  }
+  // 渐入段确实在爬：251 几乎没减、255 减到一半附近、260 取满
+  const cut = (lv: number) => base(lv).hue - shimmerOffsets(lv).hue;
+  near(cut(251), 0);
+  expect(cut(255)).toBeGreaterThan(8);
+  expect(cut(255)).toBeLessThan(12);
+  near(cut(260), 20);
 });
 
 test("字号随等级单调递增，1 级为 10/10，满级为 18/36", () => {
