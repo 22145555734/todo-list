@@ -135,38 +135,44 @@ function shimmerOffsets(lv: number) {
   return { hue: hueGap(stops[1].h, stops[0].h), light: stops[1].l - stops[0].l };
 }
 
-test("炫动幅度随等级线性递增：1 级 ±5°/±8%，499 级 ±70°/±13%", () => {
+test("色相幅度随等级线性递增：1 级 ±5°，499 级 ±70°", () => {
   const l1 = shimmerOffsets(1);
   const l499 = shimmerOffsets(499);
   expect(l1.hue).toBeCloseTo(5, 0);
-  expect(l1.light).toBeCloseTo(8, 0);
   expect(l499.hue).toBeCloseTo(70, 0);
-  expect(l499.light).toBeCloseTo(13, 0);
   // 中间等级严格夹在两端之间（250 不在收窄段内，仍是纯线性值）
   const mid = shimmerOffsets(250);
   expect(mid.hue).toBeGreaterThan(l1.hue);
   expect(mid.hue).toBeLessThan(l499.hue);
-  expect(mid.light).toBeGreaterThan(l1.light);
-  expect(mid.light).toBeLessThan(l499.light);
 });
 
-test("资深~首席（251~400）额外减 50°/5%，减到负数处封底，两端渐入渐出不留台阶", () => {
-  // 线性基线：不收窄时该级应有的幅度
-  const base = (lv: number) => ({
-    hue: 5 + ((lv - 1) / 498) * 65,
-    light: 8 + ((lv - 1) / 498) * 5,
-  });
+test("明度偏移全局为 0：1~499 级只剩色相流动，不再有一亮一暗的闪烁", () => {
+  for (const lv of [1, 100, 250, 300, 400, 499]) {
+    expect(shimmerOffsets(lv).light).toBe(0);
+    // 渐变里明度停靠点全部相同 —— 即整条渐变只有色相在变
+    // （注意：match 带 /g 返回的是整体匹配，取捕获组要用 matchAll）
+    const ls = [...levelShimmer(lv)!.badgeImage.matchAll(/hsl\([\d.]+, [\d.]+%, ([\d.]+)%\)/g)].map((m) => m[1]);
+    expect(ls).toHaveLength(5);
+    expect(new Set(ls).size).toBe(1);
+  }
+  // 收窄段同样为 0（明度这一路也归零了，不再是「再减 5%」）
+  for (const lv of [251, 258, 300, 390]) {
+    expect(shimmerOffsets(lv).light).toBe(0);
+  }
+});
+
+test("资深~首席（251~400）额外减 50°，减到负数处封底，两端渐入渐出不留台阶", () => {
+  // 线性基线：不收窄时该级应有的色相幅度（明度已全局归零，不在这里体现）
+  const base = (lv: number) => ({ hue: 5 + ((lv - 1) / 498) * 65 });
   // 容差取 0.5°，因为 hsl() 只序列化到 1 位小数，两个停靠点相减后回读有约 0.1° 的量化误差
   const near = (got: number, want: number) => expect(got).toBeCloseTo(want, 0);
   // 中段取满 50°：基准幅度只有 37~57°，减完必为负，故一律封底为 0
   for (const lv of [260, 300, 346, 390]) {
     near(shimmerOffsets(lv).hue, Math.max(0, base(lv).hue - 50));
-    near(shimmerOffsets(lv).light, base(lv).light - 5);
   }
   // 段外完全不受影响
   for (const lv of [250, 401, 499]) {
     near(shimmerOffsets(lv).hue, base(lv).hue);
-    near(shimmerOffsets(lv).light, base(lv).light);
   }
   // 两处边界都连续 —— 这是选「渐入渐出」而非「直接减」的全部意义
   for (const [a, b] of [[250, 251], [400, 401]] as const) {
@@ -186,9 +192,21 @@ test("资深~首席（251~400）额外减 50°/5%，减到负数处封底，两�
   near(cut(251), 0);
   near(cut(255), 22.2); // 权重 4/9 × 50°
   expect(shimmerOffsets(258).hue).toBeLessThan(1);
-  // 色相静止的那一段仍有明度脉动 —— 否则就是「不炫动」了，与 1~499 级全炫动的约定冲突
-  for (const lv of [258, 300, 346]) {
-    expect(shimmerOffsets(lv).light).toBeGreaterThan(3);
+});
+
+// 明度归零后，收窄段的谷底就变成彻底静止了 —— 这是用户看过预览、
+// 明知「完全静止」后选的。写下来是因为它与第十九期「1~499 级全都炫动」直接冲突。
+test("258~346 级完全静止：五个停靠点一模一样（明度归零的连带后果）", () => {
+  for (const lv of [258, 280, 300, 320, 346]) {
+    const image = levelShimmer(lv)!.badgeImage;
+    const stops = image.match(/hsl\([^)]*\)/g)!;
+    expect(stops).toHaveLength(5);
+    expect(new Set(stops).size).toBe(1); // 五站同色 → 整条渐变是纯色，animation 空转
+  }
+  // 边界外一级仍照常炫动，静止区间没有扩出去
+  // （不取 347 —— 那一级色相幅度只剩 0.16°，序列化到 1 位小数后可能恰好同串）
+  for (const lv of [250, 251, 257, 390, 400]) {
+    expect(new Set(levelShimmer(lv)!.badgeImage.match(/hsl\([^)]*\)/g)!).size).toBeGreaterThan(1);
   }
 });
 
