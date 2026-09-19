@@ -710,7 +710,15 @@ export default function TodoList() {
 
   const onDragEnd = useCallback(
     ({ active, over }: DragEndEvent) => {
+      const id = String(active.id);
       setActiveId(null);
+      // 放下后合集**保持收起**。拖拽期间它本来就被强制收起了（见 Collapsible 的 open 条件），
+      // 这里把状态落实下来 —— 否则松手的一瞬间 activeId 归 null，它又会弹回展开。
+      // 本来就收起的不用管（返回原 Set，React 会跳过这次更新）。
+      // 按 Esc 取消的不走这里：取消应该恢复原状，见 onDragCancel。
+      if (childrenOf(id).length > 0) {
+        setCollapsedIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+      }
       if (!over || active.id === over.id) return;
       const parentId = parentIdOf(String(active.id));
       // 兜底：碰撞过滤万一放行了跨层候选，这里再挡一次
@@ -724,7 +732,7 @@ export default function TodoList() {
         arrayMove(ids, ids.indexOf(String(active.id)), ids.indexOf(String(over.id))),
       );
     },
-    [todos, parentIdOf, reorderSiblings],
+    [todos, parentIdOf, reorderSiblings, childrenOf],
   );
 
   const activeTodo = activeId ? todos.find((t) => t.id === activeId) ?? null : null;
