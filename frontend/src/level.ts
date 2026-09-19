@@ -148,7 +148,7 @@ export function levelColor(level: number): string {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
-// 等级炫动：1~499 级在**自己的色域内**向右流动，速度随等级线性递增；500 级走整条彩虹
+// 等级炫动：1~499 级以本位色为中心左右流动，**幅度（色相/明度偏移）与速度都随等级线性递增**；500 级走整条彩虹
 // （`.rainbow-*` 类，1.2 周期/秒 = 0.833s，那个值定义在 index.css 里，本文件不参与）。
 //
 // 「速度」以每秒跑完几个渐变周期计。两端点由用户直接钉死，中间按等级线性插值：
@@ -164,9 +164,13 @@ export function levelColor(level: number): string {
 const LV1_CYCLES_PER_SEC = 1 / 20; // 0.05
 const LV499_CYCLES_PER_SEC = 1 / 1.145; // ≈ 0.8734
 
-/** 炫动幅度：色相左右各偏这么多度、明度上下各偏这么多个百分点 —— 即「保持在自己的色域附近」 */
-const SHIMMER_HUE_DEG = 8;
-const SHIMMER_LIGHT_PCT = 14;
+// 炫动幅度随等级线性递增（端点由用户直接钉死）：色相左右各偏 hueDeg 度、明度上下各偏 lightPct 个百分点。
+//   1 级  ：±5° / ±8%   —— 只微微颤动，本位色的辨识度基本不变
+//   499 级：±100° / ±20% —— 色相扫过 200°、明暗跨 40%，高等级比低等级「炫」得多
+const LV1_HUE_DEG = 5;
+const LV499_HUE_DEG = 100;
+const LV1_LIGHT_PCT = 8;
+const LV499_LIGHT_PCT = 20;
 
 function toHsl(r: number, g: number, b: number): [number, number, number] {
   const [rn, gn, bn] = [r / 255, g / 255, b / 255];
@@ -190,11 +194,11 @@ function hsl(h: number, s: number, l: number): string {
 }
 
 /** 以 rgb 为底色做「左偏暗 → 本色 → 右偏亮 → 本色 → 左偏暗」的渐变，首尾同色 */
-function shimmerGradient(rgb: [number, number, number]): string {
+function shimmerGradient(rgb: [number, number, number], hueDeg: number, lightPct: number): string {
   const [h, s, l] = toHsl(...rgb);
-  const lo = hsl(h - SHIMMER_HUE_DEG, s, l - SHIMMER_LIGHT_PCT);
+  const lo = hsl(h - hueDeg, s, l - lightPct);
   const mid = hsl(h, s, l);
-  const hi = hsl(h + SHIMMER_HUE_DEG, s, l + SHIMMER_LIGHT_PCT);
+  const hi = hsl(h + hueDeg, s, l + lightPct);
   // 首尾同为 lo：配合 background-size:200%，向右滚一个周期即可无缝衔接
   return `linear-gradient(90deg, ${lo}, ${mid}, ${hi}, ${mid}, ${lo})`;
 }
@@ -216,13 +220,15 @@ export function levelShimmer(level: number): LevelShimmer | null {
   const lv = Math.min(Math.max(level, 1), MAX_LEVEL);
   if (lv === MAX_LEVEL) return null;
   const [r, g, b] = levelRgb(lv);
-  // 速度在两端点之间按等级线性插值：1 级取到 0（= LV1），499 级取到 1（= LV499）
+  // 速度、幅度都在两端点之间按等级线性插值：1 级取到 0（= LV1），499 级取到 1（= LV499）
+  const t = (lv - 1) / (MAX_LEVEL - 2);
   const cyclesPerSec =
-    LV1_CYCLES_PER_SEC +
-    ((lv - 1) / (MAX_LEVEL - 2)) * (LV499_CYCLES_PER_SEC - LV1_CYCLES_PER_SEC);
+    LV1_CYCLES_PER_SEC + t * (LV499_CYCLES_PER_SEC - LV1_CYCLES_PER_SEC);
+  const hueDeg = LV1_HUE_DEG + t * (LV499_HUE_DEG - LV1_HUE_DEG);
+  const lightPct = LV1_LIGHT_PCT + t * (LV499_LIGHT_PCT - LV1_LIGHT_PCT);
   return {
-    badgeImage: shimmerGradient([r, g, b]),
-    titleImage: shimmerGradient([r, g, b].map((c) => Math.round(c * 0.72)) as [number, number, number]),
+    badgeImage: shimmerGradient([r, g, b], hueDeg, lightPct),
+    titleImage: shimmerGradient([r, g, b].map((c) => Math.round(c * 0.72)) as [number, number, number], hueDeg, lightPct),
     // 时长是速度的倒数
     durationS: 1 / cyclesPerSec,
   };

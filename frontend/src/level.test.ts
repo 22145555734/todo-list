@@ -110,7 +110,7 @@ test("炫动周期随等级逐级变短（速度递增）", () => {
   }
 });
 
-test("炫动渐变首尾同色，且只用本位色的 hsl（保持在自己的色域内）", () => {
+test("炫动渐变首尾同色，且只用本位色的 hsl（中间以本位色为基准偏移）", () => {
   const s = levelShimmer(250)!;
   for (const image of [s.badgeImage, s.titleImage]) {
     expect(image).toMatch(/^linear-gradient\(90deg, /);
@@ -119,6 +119,39 @@ test("炫动渐变首尾同色，且只用本位色的 hsl（保持在自己的�
     expect(stops[0]).toBe(stops[4]); // 首尾同色 → 无缝循环
     expect(stops[0]).not.toBe(stops[2]); // 中间确实有变化，不是一整块纯色
   }
+});
+
+test("炫动幅度随等级线性递增：1 级 ±5°/±8%，499 级 ±100°/±20%", () => {
+  // 解析 badgeImage 的前三个 hsl 停靠点（lo / mid / hi），取色相 h 与明度 l
+  const parse = (lv: number) => {
+    const img = levelShimmer(lv)!.badgeImage;
+    return img
+      .match(/hsl\(([\d.]+), ([\d.]+)%, ([\d.]+)%\)/g)!
+      .slice(0, 3)
+      .map((s) => {
+        const m = s.match(/hsl\(([\d.]+), ([\d.]+)%, ([\d.]+)%\)/)!;
+        return { h: Number(m[1]), l: Number(m[3]) };
+      });
+  };
+  // 色相会跨 0°/360°，用最短环向差（正值 = 偏了多少度）。单侧偏移 ≤100° < 180°，不会反转。
+  const hueGap = (a: number, b: number) => ((a - b + 540) % 360) - 180;
+  // 单侧偏移：mid 相对 lo 的色相/明度差，即 hueDeg / lightPct
+  const offsets = (lv: number) => {
+    const [lo, mid] = parse(lv);
+    return { hue: hueGap(mid.h, lo.h), light: mid.l - lo.l };
+  };
+  const l1 = offsets(1);
+  const l499 = offsets(499);
+  expect(l1.hue).toBeCloseTo(5, 0);
+  expect(l1.light).toBeCloseTo(8, 0);
+  expect(l499.hue).toBeCloseTo(100, 0);
+  expect(l499.light).toBeCloseTo(20, 0);
+  // 中间等级严格夹在两端之间
+  const mid = offsets(250);
+  expect(mid.hue).toBeGreaterThan(l1.hue);
+  expect(mid.hue).toBeLessThan(l499.hue);
+  expect(mid.light).toBeGreaterThan(l1.light);
+  expect(mid.light).toBeLessThan(l499.light);
 });
 
 test("字号随等级单调递增，1 级为 10/10，满级为 18/36", () => {
