@@ -136,9 +136,9 @@ function shimmerOffsets(lv: number) {
 }
 
 // 容差取 0.5：hsl() 只序列化到 1 位小数，两个停靠点相减后回读有约 0.1° 的量化误差。
-test("明度偏移所有等级一律 ±6%，不随等级变", () => {
+test("明度偏移所有等级一律 ±10%，不随等级变", () => {
   for (const lv of [1, 2, 100, 250, 251, 300, 346, 400, 401, 499]) {
-    expect(shimmerOffsets(lv).light).toBeCloseTo(6, 0);
+    expect(shimmerOffsets(lv).light).toBeCloseTo(10, 0);
   }
   // 逐级断言相邻等级之间没有明度差 —— 防止哪天又悄悄插值进来
   for (const lv of [1, 50, 150, 250, 300, 350, 400, 450]) {
