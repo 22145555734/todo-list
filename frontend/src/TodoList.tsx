@@ -930,7 +930,11 @@ export default function TodoList() {
               {!collapsedIds.has(activeTodo.id) &&
                 overlayChildren.length > 0 && (
                   <OverlayFolded>
-                    <ul className="mt-2 space-y-2">
+                    {/* 横向尺寸必须和列表里那份**逐项对齐**：`ml-3` + `pl-3` + 2px 左边框，
+                        三者共同决定子任务框比主卡窄 26px。所以那条蓝线只能设成 `border-transparent`
+                        让它看不见，**不能把 `border-l-2` 删掉** —— 删了宽度就少 2px，
+                        子任务框会跟主卡一样宽。 */}
+                    <ul className="ml-3 mt-2 space-y-2 border-l-2 border-transparent pl-3">
                       {overlayChildren.map((c) => (
                         <li key={c.id} className="drag-lift-soft">
                           {renderCard(c)}
