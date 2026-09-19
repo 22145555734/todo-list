@@ -932,7 +932,7 @@ export default function TodoList() {
                   <OverlayFolded>
                     <ul className="mt-2 space-y-2">
                       {overlayChildren.map((c) => (
-                        <li key={c.id} className="drag-lift">
+                        <li key={c.id} className="drag-lift-soft">
                           {renderCard(c)}
                         </li>
                       ))}

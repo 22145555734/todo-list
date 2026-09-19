@@ -267,6 +267,26 @@
   border-radius: 0.5rem;
 }
 
+/* 浮层里那几层子任务框：跟容器卡一起浮，但**阴影要轻得多** —— 好几个框各带一份大阴影会糊成
+   一片，看着像一整块板浮起来，而不是几个框。所以单独一套 keyframes，只调阴影，位移和放大不变。
+   （不能复用 `.drag-lift` 再覆盖 box-shadow：CSS 动画的优先级高于普通声明，盖不掉。） */
+@keyframes drag-lift-soft {
+  from {
+    transform: scale(1) translateY(0);
+    box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  }
+  to {
+    transform: scale(1.02) translateY(-4px);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  }
+}
+
+.drag-lift-soft {
+  animation: drag-lift-soft 140ms ease-out forwards;
+  will-change: transform;
+  border-radius: 0.5rem;
+}
+
 @keyframes rainbow-shift {
   0% {
     background-position: 0% 0%;
