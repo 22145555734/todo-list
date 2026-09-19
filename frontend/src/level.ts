@@ -165,12 +165,13 @@ const LV1_CYCLES_PER_SEC = 1 / 20; // 0.05
 const LV499_CYCLES_PER_SEC = 1 / 1.145; // ≈ 0.8734
 
 // 炫动幅度随等级线性递增（端点由用户直接钉死）：色相左右各偏 hueDeg 度、明度上下各偏 lightPct 个百分点。
-//   1 级  ：±5° / ±8%   —— 只微微颤动，本位色的辨识度基本不变
-//   499 级：±100° / ±20% —— 色相扫过 200°、明暗跨 40%，高等级比低等级「炫」得多
+//   1 级  ：±5° / ±8%  —— 只微微颤动，本位色的辨识度基本不变
+//   499 级：±70° / ±13% —— 上一版是 ±100°/±20%，用户看过后嫌「好难看」而收窄：
+//                          色相扫 140°、明度跨 26%，仍然明显比低等级炫，但不会整条彩虹糊成一片
 const LV1_HUE_DEG = 5;
-const LV499_HUE_DEG = 100;
+const LV499_HUE_DEG = 70;
 const LV1_LIGHT_PCT = 8;
-const LV499_LIGHT_PCT = 20;
+const LV499_LIGHT_PCT = 13;
 
 function toHsl(r: number, g: number, b: number): [number, number, number] {
   const [rn, gn, bn] = [r / 255, g / 255, b / 255];

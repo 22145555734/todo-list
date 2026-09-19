@@ -11,7 +11,7 @@ import {
 import { useStore } from "./store";
 import { useNow } from "./useNow";
 import { formatHms, formatShort } from "./time";
-import { getLevelInfo, levelColor, levelFont, levelShimmer } from "./level";
+import { getLevelInfo, levelFont, levelShimmer } from "./level";
 import type { Todo } from "./types";
 
 type Filter = "all" | "active" | "completed";
@@ -68,7 +68,6 @@ const TodoItem = memo(function TodoItem({
   const elapsed = elapsedMs(todo.id, now);
   const info = getLevelInfo(elapsed);
   const isMaxLevel = info.nextLevel === null;
-  const badgeColor = isMaxLevel ? "" : levelColor(info.level);
   const font = levelFont(info.level);
   // 只有满级是 null（它走整条彩虹的 .rainbow-*），1~499 级都有自己的本档炫动。
   // 所以下面凡是用到 shimmer 的地方都不必再判 isMaxLevel —— 两者互为反面。
@@ -260,16 +259,18 @@ const TodoItem = memo(function TodoItem({
           <div className="h-2.5 w-full overflow-hidden rounded-full bg-gray-200 ring-1 ring-inset ring-gray-200">
             <div
               className={`h-full rounded-full transition-all ${
-                isMaxLevel ? "rainbow-bg" : ""
+                isMaxLevel ? "rainbow-bg" : "shimmer-bg"
               }`}
-              style={
-                isMaxLevel
-                  ? { width: "100%" }
-                  : {
-                      width: `${(info.progress * 100).toFixed(1)}%`,
-                      background: badgeColor,
+              style={{
+                width: isMaxLevel ? "100%" : `${(info.progress * 100).toFixed(1)}%`,
+                // 与徽章同一套渐变与时长 —— 进度条也是「本等级色」，跟着一起流动
+                ...(shimmer
+                  ? {
+                      backgroundImage: shimmer.badgeImage,
+                      animationDuration: `${shimmer.durationS}s`,
                     }
-              }
+                  : {}),
+              }}
             />
           </div>
         </div>

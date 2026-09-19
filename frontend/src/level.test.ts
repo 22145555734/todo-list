@@ -121,7 +121,7 @@ test("炫动渐变首尾同色，且只用本位色的 hsl（中间以本位色�
   }
 });
 
-test("炫动幅度随等级线性递增：1 级 ±5°/±8%，499 级 ±100°/±20%", () => {
+test("炫动幅度随等级线性递增：1 级 ±5°/±8%，499 级 ±70°/±13%", () => {
   // 解析 badgeImage 的前三个 hsl 停靠点（lo / mid / hi），取色相 h 与明度 l
   const parse = (lv: number) => {
     const img = levelShimmer(lv)!.badgeImage;
@@ -144,8 +144,8 @@ test("炫动幅度随等级线性递增：1 级 ±5°/±8%，499 级 ±100°/±2
   const l499 = offsets(499);
   expect(l1.hue).toBeCloseTo(5, 0);
   expect(l1.light).toBeCloseTo(8, 0);
-  expect(l499.hue).toBeCloseTo(100, 0);
-  expect(l499.light).toBeCloseTo(20, 0);
+  expect(l499.hue).toBeCloseTo(70, 0);
+  expect(l499.light).toBeCloseTo(13, 0);
   // 中间等级严格夹在两端之间
   const mid = offsets(250);
   expect(mid.hue).toBeGreaterThan(l1.hue);
