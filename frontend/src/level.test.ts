@@ -150,7 +150,7 @@ test("炫动幅度随等级线性递增：1 级 ±5°/±8%，499 级 ±70°/±13
   expect(mid.light).toBeLessThan(l499.light);
 });
 
-test("资深~首席（251~400）额外减 20°/5%，两端渐入渐出不留台阶", () => {
+test("资深~首席（251~400）额外减 50°/5%，减到负数处封底，两端渐入渐出不留台阶", () => {
   // 线性基线：不收窄时该级应有的幅度
   const base = (lv: number) => ({
     hue: 5 + ((lv - 1) / 498) * 65,
@@ -158,9 +158,9 @@ test("资深~首席（251~400）额外减 20°/5%，两端渐入渐出不留台�
   });
   // 容差取 0.5°，因为 hsl() 只序列化到 1 位小数，两个停靠点相减后回读有约 0.1° 的量化误差
   const near = (got: number, want: number) => expect(got).toBeCloseTo(want, 0);
-  // 中段（260~390）取满 -20°/-5%
-  for (const lv of [260, 300, 350, 390]) {
-    near(shimmerOffsets(lv).hue, base(lv).hue - 20);
+  // 中段取满 50°：基准幅度只有 37~57°，减完必为负，故一律封底为 0
+  for (const lv of [260, 300, 346, 390]) {
+    near(shimmerOffsets(lv).hue, Math.max(0, base(lv).hue - 50));
     near(shimmerOffsets(lv).light, base(lv).light - 5);
   }
   // 段外完全不受影响
@@ -173,12 +173,23 @@ test("资深~首席（251~400）额外减 20°/5%，两端渐入渐出不留台�
     expect(Math.abs(shimmerOffsets(a).hue - shimmerOffsets(b).hue)).toBeLessThan(0.5);
     expect(Math.abs(shimmerOffsets(a).light - shimmerOffsets(b).light)).toBeLessThan(0.5);
   }
-  // 渐入段确实在爬：251 几乎没减、255 减到一半附近、260 取满
+  // 整段单调：251 级起一路降到谷底，再一路升回 400 级。
+  // 若把负值取绝对值而非封底，渐入途中（约 258 级）会先触底再回弹，这条就会挂 —— 这是本条的要点
+  for (let lv = 251; lv < 346; lv++) {
+    expect(shimmerOffsets(lv + 1).hue).toBeLessThanOrEqual(shimmerOffsets(lv).hue + 0.5);
+  }
+  for (let lv = 346; lv < 400; lv++) {
+    expect(shimmerOffsets(lv + 1).hue).toBeGreaterThanOrEqual(shimmerOffsets(lv).hue - 0.5);
+  }
+  // 渐入段确实在爬：251 几乎没减、255 减到一半附近、258 起色相归零
   const cut = (lv: number) => base(lv).hue - shimmerOffsets(lv).hue;
   near(cut(251), 0);
-  expect(cut(255)).toBeGreaterThan(8);
-  expect(cut(255)).toBeLessThan(12);
-  near(cut(260), 20);
+  near(cut(255), 22.2); // 权重 4/9 × 50°
+  expect(shimmerOffsets(258).hue).toBeLessThan(1);
+  // 色相静止的那一段仍有明度脉动 —— 否则就是「不炫动」了，与 1~499 级全炫动的约定冲突
+  for (const lv of [258, 300, 346]) {
+    expect(shimmerOffsets(lv).light).toBeGreaterThan(3);
+  }
 });
 
 test("字号随等级单调递增，1 级为 10/10，满级为 18/36", () => {

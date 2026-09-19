@@ -173,13 +173,20 @@ const LV499_HUE_DEG = 70;
 const LV1_LIGHT_PCT = 8;
 const LV499_LIGHT_PCT = 13;
 
-// 资深 / 顾问 / 首席三档（251~400 级）再额外收窄一档 —— 用户要求这一段减 20°/5%。
-// **两端各留一段过渡**，否则 250→251 与 400→401 会各出现一次 20° 的台阶：
-// 相邻两级看起来明显不同，升级瞬间幅度突变。渐入渐出后两处都连续
-// （250→251 是 37.5°→37.6°，400→401 是 57.1°→57.2°），中段仍是完整的 -20°/-5%。
+// 资深 / 顾问 / 首席三档（251~400 级）再额外收窄一档 —— 用户先要求这一段减 20°/5%，
+// 看过预览后又要求「还是太多了，再减30°」，色相合计减 50°（明度仍是 5%）。
+// **两端各留一段过渡**，否则 250→251 与 400→401 会各出现一次 50° 的台阶：
+// 相邻两级看起来明显不同，升级瞬间幅度突变。
+//
+// 减到负数时**封底为 0**，不取绝对值。这一段的基准幅度本来就只有 37~57°，
+// 减 50° 必然在中途穿越零点；取绝对值的话，渐入过程中（约 258 级）会先掉到 0 再回弹，
+// 到 346 级第二次归零，整段成双谷 —— 相邻两级一会儿更静一会儿更闹，反而不像「逐级变化」。
+// 封底后整段单调：251 级 37.6° 一路降到 258 级触底，258~346 恒为 0，
+// 之后回升到 400 级的 57.1°。色相静止的那九十来级仍有明度脉动（±3~7%），
+// 所以「1~499 级都炫动」这条不破。
 const TRIM_FROM = 251;
 const TRIM_TO = 400;
-const TRIM_HUE_DEG = 20;
+const TRIM_HUE_DEG = 50;
 const TRIM_LIGHT_PCT = 5;
 const TRIM_FADE_IN = 9; // 251~260 渐入
 const TRIM_FADE_OUT = 10; // 390~400 渐出
@@ -245,8 +252,11 @@ export function levelShimmer(level: number): LevelShimmer | null {
   const cyclesPerSec =
     LV1_CYCLES_PER_SEC + t * (LV499_CYCLES_PER_SEC - LV1_CYCLES_PER_SEC);
   const trim = trimWeight(lv);
-  const hueDeg =
-    LV1_HUE_DEG + t * (LV499_HUE_DEG - LV1_HUE_DEG) - trim * TRIM_HUE_DEG;
+  // 收窄段减得比基准幅度还深，中段会减成负数 —— 封底为 0（理由见 TRIM_HUE_DEG 的注释）
+  const hueDeg = Math.max(
+    0,
+    LV1_HUE_DEG + t * (LV499_HUE_DEG - LV1_HUE_DEG) - trim * TRIM_HUE_DEG,
+  );
   const lightPct =
     LV1_LIGHT_PCT + t * (LV499_LIGHT_PCT - LV1_LIGHT_PCT) - trim * TRIM_LIGHT_PCT;
   return {
