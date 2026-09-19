@@ -712,12 +712,20 @@ export default function TodoList() {
     ({ active, over }: DragEndEvent) => {
       const id = String(active.id);
       setActiveId(null);
-      // 放下后合集**保持收起**。拖拽期间它本来就被强制收起了（见 Collapsible 的 open 条件），
-      // 这里把状态落实下来 —— 否则松手的一瞬间 activeId 归 null，它又会弹回展开。
-      // 本来就收起的不用管（返回原 Set，React 会跳过这次更新）。
+      // 拖主任务时整个列表的合集会一起收起（见 dragCollapsesAll）。这里把状态落实下来 ——
+      // 否则松手的一瞬间 activeId 归 null，它们会齐刷刷弹回展开。
+      // 本来就收起的不用管：只在集合变大时才换新 Set，React 才会重渲染。
       // 按 Esc 取消的不走这里：取消应该恢复原状，见 onDragCancel。
-      if (childrenOf(id).length > 0) {
-        setCollapsedIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+      if (todos.find((t) => t.id === id)?.parentId === null) {
+        setCollapsedIds((prev) => {
+          const next = new Set(prev);
+          // 某行的 id 出现在别人（或自己）的 parentId 里，它就带子任务
+          const parents = new Set(todos.map((t) => t.parentId));
+          for (const t of todos) {
+            if (t.parentId === null && parents.has(t.id)) next.add(t.id);
+          }
+          return next.size === prev.size ? prev : next;
+        });
       }
       if (!over || active.id === over.id) return;
       const parentId = parentIdOf(String(active.id));
@@ -738,12 +746,19 @@ export default function TodoList() {
   const activeTodo = activeId ? todos.find((t) => t.id === activeId) ?? null : null;
   const overlayChildren = activeTodo ? childrenOf(activeTodo.id) : [];
 
-  // 拖的这一行确实有子任务、而且当前是展开的 —— 只有这种情况才会有收起动画，
-  // 也才需要逐帧重测
+  /**
+   * 拖的是**主任务** —— 这时候整个列表的合集一起收起（不只是被拖那一个），
+   * 列表一下变紧凑，好看清往哪儿落。
+   *
+   * 拖子任务时不能这么干：子任务就在自己合集里排，把它收起来就没得拖了。
+   */
+  const dragCollapsesAll = activeTodo !== null && activeTodo.parentId === null;
+
+  // 确实有展开着的合集正在收 —— 只有这种情况才有收起动画，也才需要逐帧重测。
+  // 一遍扫完（有子任务的行，其 parentId 必然出现在某行的 parentId 里）
   const collapsing =
-    activeId !== null &&
-    !collapsedIds.has(activeId) &&
-    childrenOf(activeId).length > 0;
+    dragCollapsesAll &&
+    todos.some((t) => t.parentId !== null && !collapsedIds.has(t.parentId));
 
   const roots = useMemo(() => todos.filter((t) => t.parentId === null), [todos]);
 
@@ -859,7 +874,7 @@ export default function TodoList() {
                         收起动画期间要靠 <RemeasureWhileCollapsing> 催 dnd-kit 重测，原因见那边。 */}
                     {children.length > 0 && (
                       <Collapsible
-                        open={!collapsedIds.has(todo.id) && activeId !== todo.id}
+                        open={!collapsedIds.has(todo.id) && !dragCollapsesAll}
                       >
                         <SortableContext
                           items={children.map((c) => c.id)}
