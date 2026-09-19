@@ -334,13 +334,19 @@ function SortableRow({
         transition,
       }}
     >
-      {/* 原项在拖拽期间整个隐掉：用了 DragOverlay 之后，原项仍会被 strategy 挪到目标槽位，
-          不隐就会看到「一个跟着手指、一个自己挪」的重影。列表里的空档就是它将要落下的位置。
+      {/* 原项在拖拽期间留成一个**看得见的虚位**，而不是整个隐掉：被拖这一行如果是个展开着的
+          合集，它的子任务要收拢到这个框的底边 —— 框看不见的话，子任务看着就像收进一片空白。
+          虚位不画卡片本身（`[&>*]:invisible`），只留一个占位框，否则会和跟着手指的那张
+          浮层卡看起来一模一样，像是没拖起来。**用 `visibility` 而不是 `display: none`**：
+          前者不脱流，框的高度仍等于卡片本身的高度，子任务收拢的终点才正好落在它的底边。
+          用 `ring-inset` 而不是 `border` 也是同一个理由 —— ring 不占布局，加了不会把框撑高。
           touch-action 只能用 manipulation —— 整卡都是拖拽面，用 none 会让页面彻底划不动。 */}
       <div
         {...listeners}
         className={`touch-manipulation select-none [-webkit-touch-callout:none] ${
-          isDragging ? "opacity-0" : ""
+          isDragging
+            ? "rounded-lg bg-blue-50 ring-2 ring-inset ring-blue-300 [&>*]:invisible"
+            : ""
         }`}
       >
         {card}
