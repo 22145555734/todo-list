@@ -738,7 +738,17 @@ export default function TodoList() {
                     parentId={null}
                     card={renderCard(todo)}
                   >
-                    {children.length > 0 && (
+                    {/* 拖这一行时把它的子任务整个卸掉，落地再长回来。
+                        **必须是卸载，不能改成 `open={false}` 交给 Collapsible 去收**：
+                        dnd-kit 只在「拖拽开始」和「droppable 增删」时重测各行矩形
+                        （useDroppableMeasuring），**不认节点变矮**。走 Collapsible 那条路
+                        是 250ms 高度动画 —— 那段时间 DOM 已经矮了、矩形还是旧的，邻居的
+                        让位距离正好歪在这段窗口里。卸载会让子任务的 droppable 注销
+                        （UnregisterDroppable 换新 map），触发一次全量重测，量到的就是
+                        收起后的布局。重挂载时 Collapsible 的 first.current 为真、不做入场
+                        动画，所以落地也是干脆地长回来。
+                        本来就没展开的行（在 collapsedIds 里）本来就没渲染内容，不受影响。 */}
+                    {children.length > 0 && activeId !== todo.id && (
                       <Collapsible open={!collapsedIds.has(todo.id)}>
                         <SortableContext
                           items={children.map((c) => c.id)}
