@@ -148,8 +148,15 @@ export function levelColor(level: number): string {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
-// 等级炫动：1~499 级以本位色为中心左右流动，**幅度（色相/明度偏移）与速度都随等级线性递增**；500 级走整条彩虹
+// 等级炫动：1~499 级在**自己的色域内**向右流动，速度随等级线性递增；500 级走整条彩虹
 // （`.rainbow-*` 类，1.2 周期/秒 = 0.833s，那个值定义在 index.css 里，本文件不参与）。
+//
+// 幅度**写死**（见下面的 SHIMMER_HUE_DEG / SHIMMER_LIGHT_PCT），不随等级变 —— 这是 2026-09-19
+// 折腾一整天后的结论：那天试过「幅度随等级递增」（第十九期，499 级 ±100°/±20%）、收窄到
+// ±70°/±13%、给资深~首席那三档额外减 50°、以及把明暗偏移全局归零，用户逐版看下来
+// 全部否掉，最后说「好难看，改回最初那版」。所以这里回到长期以来的那套值。
+// **不要再自作主张让幅度随等级变** —— 每一版都做了完整验证（测试 + 逐像素采样预览图），
+// 问题不在实现，在这个方向本身。
 //
 // 「速度」以每秒跑完几个渐变周期计。两端点由用户直接钉死，中间按等级线性插值：
 //   1 级   ：20 秒一圈（0.05 周期/秒）—— 本期之前是「完全不动」，用户要求给一档可见的慢速
@@ -164,48 +171,9 @@ export function levelColor(level: number): string {
 const LV1_CYCLES_PER_SEC = 1 / 20; // 0.05
 const LV499_CYCLES_PER_SEC = 1 / 1.145; // ≈ 0.8734
 
-// 炫动幅度随等级线性递增（端点由用户直接钉死）：色相左右各偏 hueDeg 度、明度上下各偏 lightPct 个百分点。
-//   1 级  ：±5°  —— 只微微颤动，本位色的辨识度基本不变
-//   499 级：±70° —— 上一版是 ±100°，用户看过后嫌「好难看」而收窄：
-//                   色相扫 140°，仍然明显比低等级炫，但不会整条彩虹糊成一片
-const LV1_HUE_DEG = 5;
-const LV499_HUE_DEG = 70;
-
-// 明度偏移：本期按用户要求**全局归零**（原话「先把明暗都降到0」）—— 1~499 级只剩色相流动，
-// 不再有一亮一暗的闪烁。插值、收窄那一整套机制都原样留着，恢复只需把这三个数改回去。
-// 归零的连带后果：251~400 收窄段本来就已把色相减到 0（见 TRIM_HUE_DEG），
-// 明度再去掉后，**258~346 级彻底静止** —— 渐变五个停靠点完全相同，animation 空转。
-const LV1_LIGHT_PCT = 0;
-const LV499_LIGHT_PCT = 0;
-
-// 资深 / 顾问 / 首席三档（251~400 级）再额外收窄一档 —— 用户先要求这一段减 20°/5%，
-// 看过预览后又要求「还是太多了，再减30°」，色相合计减 50°。
-// **两端各留一段过渡**，否则 250→251 与 400→401 会各出现一次 50° 的台阶：
-// 相邻两级看起来明显不同，升级瞬间幅度突变。
-//
-// 减到负数时**封底为 0**，不取绝对值。这一段的基准幅度本来就只有 37~57°，
-// 减 50° 必然在中途穿越零点；取绝对值的话，渐入过程中（约 258 级）会先掉到 0 再回弹，
-// 到 346 级第二次归零，整段成双谷 —— 相邻两级一会儿更静一会儿更闹，反而不像「逐级变化」。
-// 封底后整段单调：251 级 37.6° 一路降到 258 级触底，258~346 恒为 0，
-// 之后回升到 400 级的 57.1°。
-//
-// 明度这一路同样归零（用户「先把明暗都降到0」），所以原本给这一段留的
-// 「明暗呼吸」也没了 —— 258~346 级是真·完全静止，不再是「退成明暗呼吸」。
-// 这条与第十九期「1~499 级全都炫动」的约定直接冲突，是用户明知后选的（预览里写明「完全静止」）。
-const TRIM_FROM = 251;
-const TRIM_TO = 400;
-const TRIM_HUE_DEG = 50;
-const TRIM_LIGHT_PCT = 0;
-const TRIM_FADE_IN = 9; // 251~260 渐入
-const TRIM_FADE_OUT = 10; // 390~400 渐出
-
-/** 251~400 段的减幅权重 0~1：两端线性渐入渐出，中段取满 */
-function trimWeight(lv: number): number {
-  if (lv < TRIM_FROM || lv > TRIM_TO) return 0;
-  if (lv < TRIM_FROM + TRIM_FADE_IN) return (lv - TRIM_FROM) / TRIM_FADE_IN;
-  if (lv > TRIM_TO - TRIM_FADE_OUT) return (TRIM_TO - lv) / TRIM_FADE_OUT;
-  return 1;
-}
+/** 炫动幅度：色相左右各偏这么多度、明度上下各偏这么多个百分点 —— 即「保持在自己的色域附近」 */
+const SHIMMER_HUE_DEG = 8;
+const SHIMMER_LIGHT_PCT = 14;
 
 function toHsl(r: number, g: number, b: number): [number, number, number] {
   const [rn, gn, bn] = [r / 255, g / 255, b / 255];
@@ -229,11 +197,11 @@ function hsl(h: number, s: number, l: number): string {
 }
 
 /** 以 rgb 为底色做「左偏暗 → 本色 → 右偏亮 → 本色 → 左偏暗」的渐变，首尾同色 */
-function shimmerGradient(rgb: [number, number, number], hueDeg: number, lightPct: number): string {
+function shimmerGradient(rgb: [number, number, number]): string {
   const [h, s, l] = toHsl(...rgb);
-  const lo = hsl(h - hueDeg, s, l - lightPct);
+  const lo = hsl(h - SHIMMER_HUE_DEG, s, l - SHIMMER_LIGHT_PCT);
   const mid = hsl(h, s, l);
-  const hi = hsl(h + hueDeg, s, l + lightPct);
+  const hi = hsl(h + SHIMMER_HUE_DEG, s, l + SHIMMER_LIGHT_PCT);
   // 首尾同为 lo：配合 background-size:200%，向右滚一个周期即可无缝衔接
   return `linear-gradient(90deg, ${lo}, ${mid}, ${hi}, ${mid}, ${lo})`;
 }
@@ -255,21 +223,13 @@ export function levelShimmer(level: number): LevelShimmer | null {
   const lv = Math.min(Math.max(level, 1), MAX_LEVEL);
   if (lv === MAX_LEVEL) return null;
   const [r, g, b] = levelRgb(lv);
-  // 速度、幅度都在两端点之间按等级线性插值：1 级取到 0（= LV1），499 级取到 1（= LV499）
-  const t = (lv - 1) / (MAX_LEVEL - 2);
+  // 速度在两端点之间按等级线性插值：1 级取到 0（= LV1），499 级取到 1（= LV499）
   const cyclesPerSec =
-    LV1_CYCLES_PER_SEC + t * (LV499_CYCLES_PER_SEC - LV1_CYCLES_PER_SEC);
-  const trim = trimWeight(lv);
-  // 收窄段减得比基准幅度还深，中段会减成负数 —— 封底为 0（理由见 TRIM_HUE_DEG 的注释）
-  const hueDeg = Math.max(
-    0,
-    LV1_HUE_DEG + t * (LV499_HUE_DEG - LV1_HUE_DEG) - trim * TRIM_HUE_DEG,
-  );
-  const lightPct =
-    LV1_LIGHT_PCT + t * (LV499_LIGHT_PCT - LV1_LIGHT_PCT) - trim * TRIM_LIGHT_PCT;
+    LV1_CYCLES_PER_SEC +
+    ((lv - 1) / (MAX_LEVEL - 2)) * (LV499_CYCLES_PER_SEC - LV1_CYCLES_PER_SEC);
   return {
-    badgeImage: shimmerGradient([r, g, b], hueDeg, lightPct),
-    titleImage: shimmerGradient([r, g, b].map((c) => Math.round(c * 0.72)) as [number, number, number], hueDeg, lightPct),
+    badgeImage: shimmerGradient([r, g, b]),
+    titleImage: shimmerGradient([r, g, b].map((c) => Math.round(c * 0.72)) as [number, number, number]),
     // 时长是速度的倒数
     durationS: 1 / cyclesPerSec,
   };
