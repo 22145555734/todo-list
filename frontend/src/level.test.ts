@@ -146,29 +146,29 @@ test("明度偏移所有等级一律 ±6%，不随等级变", () => {
   }
 });
 
-test("色相偏移 250 级及以下恒为 ±8°，251~499 线性升到 ±20°", () => {
-  // 平段：250 级（含）之前纹丝不动
-  for (const lv of [1, 2, 50, 100, 200, 250]) {
+test("色相偏移 400 级及以下恒为 ±8°，401~499 线性升到 ±30°", () => {
+  // 平段：400 级（含）之前纹丝不动 —— 全部 400 级逐级断言，这是本版最容易被改坏的地方
+  for (let lv = 1; lv <= 400; lv++) {
     expect(shimmerOffsets(lv).hue).toBeCloseTo(8, 0);
   }
   // 终点
-  expect(shimmerOffsets(499).hue).toBeCloseTo(20, 0);
-  // 中段线性：350 级 = 8 + (350-250)/249 * 12 ≈ 12.82
-  expect(shimmerOffsets(350).hue).toBeCloseTo(12.82, 0);
-  // 边界连续：250 → 251 没有台阶（斜率只有约 0.048°/级）
-  expect(shimmerOffsets(251).hue - shimmerOffsets(250).hue).toBeLessThan(0.15);
-  // 251 起逐级单调不降，且每级增量都很小（不会跳变）。
+  expect(shimmerOffsets(499).hue).toBeCloseTo(30, 0);
+  // 中段线性：450 级 = 8 + (450-400)/99 * 22 ≈ 19.11
+  expect(shimmerOffsets(450).hue).toBeCloseTo(19.11, 0);
+  // 边界连续：400 → 401 没有台阶（斜率约 0.222°/级）
+  expect(shimmerOffsets(401).hue - shimmerOffsets(400).hue).toBeLessThan(0.4);
+  // 401 起逐级单调不降，且每级增量都不大（不会跳变）。
   // 容差 0.11 = 一个量化步长：幅度本身是严格单调的，但两个停靠点各自被序列化到 1 位小数，
-  // 反解回来的差值带约 1e-13 的浮点噪声（实测 8.299999999999955 vs 8.300000000000011），
-  // 卡死 ≥ 会因这点噪声假挂
-  for (let lv = 250; lv < 499; lv++) {
+  // 反解回来的差值带约 1e-13 的浮点噪声，回读值会在 0.1° 的两侧跳。
+  // 本版斜率 0.222°/级，量化后相邻两级大多能区分开，但仍不该卡死 ≥
+  for (let lv = 400; lv < 499; lv++) {
     expect(shimmerOffsets(lv + 1).hue).toBeGreaterThan(shimmerOffsets(lv).hue - 0.11);
   }
-  for (const lv of [250, 300, 350, 400, 450, 498]) {
-    expect(shimmerOffsets(lv + 1).hue - shimmerOffsets(lv).hue).toBeLessThan(0.15);
+  for (const lv of [400, 420, 450, 470, 498]) {
+    expect(shimmerOffsets(lv + 1).hue - shimmerOffsets(lv).hue).toBeLessThan(0.4);
   }
   // 每一级都还在动，没有「完全静止」的等级（满级除外，它走彩虹）
-  for (const lv of [1, 250, 300, 499]) {
+  for (const lv of [1, 250, 400, 499]) {
     expect(new Set(levelShimmer(lv)!.badgeImage.match(/hsl\([^)]*\)/g)!).size).toBeGreaterThan(1);
   }
 });
