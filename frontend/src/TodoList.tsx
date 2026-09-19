@@ -334,25 +334,48 @@ function SortableRow({
         transition,
       }}
     >
-      {/* 原项在拖拽期间留成一个**看得见的虚位**，而不是整个隐掉：被拖这一行如果是个展开着的
-          合集，它的子任务要收拢到这个框的底边 —— 框看不见的话，子任务看着就像收进一片空白。
-          虚位不画卡片本身（`[&>*]:invisible`），只留一个占位框，否则会和跟着手指的那张
-          浮层卡看起来一模一样，像是没拖起来。**用 `visibility` 而不是 `display: none`**：
-          前者不脱流，框的高度仍等于卡片本身的高度，子任务收拢的终点才正好落在它的底边。
-          用 `ring-inset` 而不是 `border` 也是同一个理由 —— ring 不占布局，加了不会把框撑高。
-          touch-action 只能用 manipulation —— 整卡都是拖拽面，用 none 会让页面彻底划不动。 */}
-      <div
-        {...listeners}
-        className={`touch-manipulation select-none [-webkit-touch-callout:none] ${
-          isDragging
-            ? "rounded-lg bg-blue-50 ring-2 ring-inset ring-blue-300 [&>*]:invisible"
-            : ""
-        }`}
-      >
-        {card}
+      {/* 拖拽期间**整行一起隐掉**，不只是卡片：子任务这会儿已经跟着浮层卡飘走了，
+          原地再画一份就是重影。
+          隐的是外面这一层，`listeners` 仍只挂在卡片那一层 —— 挂到外面来的话，按下子任务
+          会同时命中内外两个激活器（dnd-kit 只保留一个 active），变成「拖子任务 = 拖整个合集」。
+          这一行在拖拽期间仍然会变矮（子任务那份 `Collapsible` 被强制收起，列表好合上），
+          所以还得靠 `<RemeasureWhileCollapsing>` 催 dnd-kit 重测。 */}
+      <div className={isDragging ? "opacity-0" : ""}>
+        {/* touch-action 只能用 manipulation —— 整卡都是拖拽面，用 none 会让页面彻底划不动 */}
+        <div
+          {...listeners}
+          className="touch-manipulation select-none [-webkit-touch-callout:none]"
+        >
+          {card}
+        </div>
+        {children}
       </div>
-      {children}
     </li>
+  );
+}
+
+/**
+ * 浮层里那一份子任务：**挂上时从自然高度收到 0** —— 也就是「边浮边收回」。
+ *
+ * 只做收起、不做展开：浮层一放下就整个卸载了，没有展开这一回事。
+ * 不用 `Collapsible` 是因为它的入场要靠 `open` 从 false 翻到 true，而这里需要的是反过来
+ * —— 出生就是展开的，然后收掉；直接在这里当场量高度最省事。
+ */
+function OverlayFolded({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = `${el.scrollHeight}px`;
+    void el.offsetHeight; // 强制回流，让起点落在自然高度上（否则 auto → 0px 不产生过渡）
+    el.style.height = "0px";
+  }, []);
+
+  return (
+    <div ref={ref} style={{ overflow: "hidden", transition: "height 250ms ease" }}>
+      {children}
+    </div>
   );
 }
 
@@ -682,6 +705,7 @@ export default function TodoList() {
   );
 
   const activeTodo = activeId ? todos.find((t) => t.id === activeId) ?? null : null;
+  const overlayChildren = activeTodo ? childrenOf(activeTodo.id) : [];
 
   // 拖的这一行确实有子任务、而且当前是展开的 —— 只有这种情况才会有收起动画，
   // 也才需要逐帧重测
@@ -898,6 +922,18 @@ export default function TodoList() {
           {activeTodo ? (
             <div className="drag-lift pointer-events-none">
               {renderCard(activeTodo)}
+              {/* 子任务跟着卡片一起浮起来，然后在浮的过程中收掉。本来就收起的合集不带这一份 ——
+                  「如果子任务本身就是合起来的，则不用管」。 */}
+              {!collapsedIds.has(activeTodo.id) &&
+                overlayChildren.length > 0 && (
+                  <OverlayFolded>
+                    <ul className="ml-3 mt-2 space-y-2 border-l-2 border-blue-100 pl-3">
+                      {overlayChildren.map((c) => (
+                        <li key={c.id}>{renderCard(c)}</li>
+                      ))}
+                    </ul>
+                  </OverlayFolded>
+                )}
             </div>
           ) : null}
         </DragOverlay>
