@@ -2,6 +2,7 @@ package com.todo.todo;
 
 import com.todo.todo.dto.TodoCreateRequest;
 import com.todo.todo.dto.TodoDto;
+import com.todo.todo.dto.TodoOrderRequest;
 import com.todo.todo.dto.TodoUpdateRequest;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -10,6 +11,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -38,6 +40,13 @@ public class TodoController {
     @PatchMapping("/{id}")
     public TodoDto update(@PathVariable String id, @RequestBody TodoUpdateRequest req) {
         return todoService.update(id, req);
+    }
+
+    /** 重排顶层事项或某个合集的子任务。字面量子路径，和 /completed 一样不会被 /{id} 吃掉 */
+    @PutMapping("/order")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void reorder(@RequestBody TodoOrderRequest req) {
+        todoService.reorder(req);
     }
 
     @DeleteMapping("/completed")

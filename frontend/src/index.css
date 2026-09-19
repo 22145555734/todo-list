@@ -246,6 +246,27 @@
   color: transparent;
 }
 
+/* 拖拽浮起：往外放大一点、上移一点，阴影同时由小变大。
+   套在 DragOverlay 内层再包一层的 div 上，**不能**直接套在 DragOverlay 定位的那个节点 —— 库靠
+   行内 transform 让副本跟随指针，并会在放下时读回该节点的 getComputedStyle().transform 来播下落动画，
+   CSS 动画的优先级高于行内样式，套上去会同时顶掉这两件事。 */
+@keyframes drag-lift {
+  from {
+    transform: scale(1) translateY(0);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  }
+  to {
+    transform: scale(1.02) translateY(-4px);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.18);
+  }
+}
+
+.drag-lift {
+  animation: drag-lift 140ms ease-out forwards;
+  will-change: transform;
+  border-radius: 0.5rem;
+}
+
 @keyframes rainbow-shift {
   0% {
     background-position: 0% 0%;

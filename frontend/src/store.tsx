@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { api } from "./api";
+import { applyGroupOrder } from "./reorder";
 import { clearSession, getToken, getUsername, setSession } from "./token";
 import type { TimeSession, Todo } from "./types";
 
@@ -30,6 +31,8 @@ interface StoreValue {
   toggleTodo: (id: string) => Promise<void>;
   deleteTodo: (id: string) => Promise<void>;
   editTodo: (id: string, text: string) => Promise<void>;
+  /** 把同一层级的兄弟事项重排成给定顺序（乐观更新，失败回滚） */
+  reorderSiblings: (parentId: string | null, orderedIds: string[]) => Promise<void>;
   clearCompleted: () => Promise<void>;
   toggleTimer: (todoId: string) => Promise<void>;
   adoptTime: (containerId: string, targetId: string) => Promise<void>;
@@ -213,6 +216,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [handleError],
   );
 
+  // 先本地重排（拖拽的反馈要跟手），再发请求；失败回滚到拖之前那一份
+  const reorderSiblings = useCallback(
+    async (parentId: string | null, orderedIds: string[]) => {
+      const snapshot = todos;
+      setError(null);
+      setTodos((cur) => applyGroupOrder(cur, parentId, orderedIds));
+      try {
+        await api.reorderTodos(parentId, orderedIds);
+      } catch (e) {
+        setTodos(snapshot);
+        handleError(e);
+      }
+    },
+    [todos, handleError],
+  );
+
   const deleteTodo = useCallback(
     async (id: string) => {
       setError(null);
@@ -309,6 +328,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     toggleTodo,
     deleteTodo,
     editTodo,
+    reorderSiblings,
     clearCompleted,
     toggleTimer,
     adoptTime,

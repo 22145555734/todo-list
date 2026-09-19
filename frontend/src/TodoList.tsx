@@ -8,10 +8,29 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
+import {
+  DndContext,
+  DragOverlay,
+  MouseSensor,
+  TouchSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type CollisionDetection,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { useStore } from "./store";
 import { useNow } from "./useNow";
 import { formatHms, formatShort } from "./time";
 import { getLevelInfo, levelFont, levelShimmer } from "./level";
+import { siblingIds } from "./reorder";
 import type { Todo } from "./types";
 
 type Filter = "all" | "active" | "completed";
@@ -107,7 +126,8 @@ const TodoItem = memo(function TodoItem({
               if (e.key === "Escape") cancelEdit();
             }}
             autoFocus
-            className="flex-1 rounded border border-blue-400 px-2 py-1 text-gray-700 outline-none focus:ring-2 focus:ring-blue-200"
+            /* select-text 抵消拖拽面继承下来的 user-select:none，否则编辑时选不中已有文字 */
+            className="flex-1 select-text rounded border border-blue-400 px-2 py-1 text-gray-700 outline-none focus:ring-2 focus:ring-blue-200"
           />
         ) : (
           <span
@@ -279,6 +299,56 @@ const TodoItem = memo(function TodoItem({
   );
 });
 
+/**
+ * 一行可拖拽的事项。
+ *
+ * `setNodeRef` 挂在 `<li>` 上、`listeners` 挂在内层卡片 div 上，**这两者必须分开**：
+ *
+ * - 测量单位得是整行（卡片 + 它下面的子任务列表），否则邻居的让位距离只按卡片高度算，
+ *   带子任务的合集落地时会再跳一截。
+ * - `listeners` 若跟着挂到 `<li>`，由于子任务列表在 `<li>` 里面，按子任务会同时命中内外两层
+ *   激活器，而 dnd-kit 只保留一个 active —— 结果是「拖子任务变成了拖整个合集」。
+ */
+function SortableRow({
+  id,
+  parentId,
+  card,
+  children,
+}: {
+  id: string;
+  parentId: string | null;
+  card: ReactNode;
+  children?: ReactNode;
+}) {
+  const { setNodeRef, listeners, transform, transition, isDragging } =
+    useSortable({ id, data: { parentId } });
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={{
+        transform: transform
+          ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
+          : undefined,
+        transition,
+      }}
+    >
+      {/* 原项在拖拽期间整个隐掉：用了 DragOverlay 之后，原项仍会被 strategy 挪到目标槽位，
+          不隐就会看到「一个跟着手指、一个自己挪」的重影。列表里的空档就是它将要落下的位置。
+          touch-action 只能用 manipulation —— 整卡都是拖拽面，用 none 会让页面彻底划不动。 */}
+      <div
+        {...listeners}
+        className={`touch-manipulation select-none [-webkit-touch-callout:none] ${
+          isDragging ? "opacity-0" : ""
+        }`}
+      >
+        {card}
+      </div>
+      {children}
+    </li>
+  );
+}
+
 /** 可展开/收起容器：展开时做高度入场动画，收起时高度归零、动画结束后卸载内容 */
 function Collapsible({
   open,
@@ -424,6 +494,7 @@ export default function TodoList() {
     toggleTodo,
     deleteTodo,
     editTodo,
+    reorderSiblings,
     clearCompleted,
     toggleTimer,
     adoptTime,
@@ -494,6 +565,72 @@ export default function TodoList() {
     }
   };
 
+  // 电脑靠鼠标、手机靠触摸，天然分流，正好对上「PC 直接拖 / 手机长按 1 秒」：
+  // - MouseSensor 用 distance：鼠标移动 4px 才算拖，纯点击（勾选、双击编辑）不触发。
+  //   这里**不能**给 tolerance —— 在 distance 约束下 tolerance 是「超过即取消」，
+  //   鼠标一甩超过 8px 反而永远拖不起来。
+  // - TouchSensor 用 delay：按住 1 秒才算，期间手指移动超过 10px 就中止激活 —— 这是列表
+  //   还能正常滑动的关键。tolerance 在这个约束下是**必填**，缺了会在库内部解构 undefined 崩掉。
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 1000, tolerance: 10 },
+    }),
+  );
+
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  const parentIdOf = useCallback(
+    (id: string) => todos.find((t) => t.id === id)?.parentId ?? null,
+    [todos],
+  );
+
+  // 只把同分组的项当候选，跨层自然落空。顺带规避多容器下 closestCenter 的碰撞闪烁
+  // （等距时在两个容器间来回跳，dnd-kit#1213）。
+  const collisionDetection = useCallback<CollisionDetection>(
+    ({ droppableContainers, active, ...args }) => {
+      const parentId = parentIdOf(String(active.id));
+      return closestCenter({
+        ...args,
+        active,
+        droppableContainers: droppableContainers.filter(
+          (c) =>
+            (c.data.current as { parentId?: string | null } | undefined)
+              ?.parentId === parentId,
+        ),
+      });
+    },
+    [parentIdOf],
+  );
+
+  const onDragStart = useCallback((e: DragStartEvent) => {
+    setActiveId(String(e.active.id));
+    // 长按成功的触感反馈。部分 WebView（如百度 App）会屏蔽它 —— 所以浮起动画才是主反馈，
+    // 拿不到就算了，不能依赖这一下震动。
+    navigator.vibrate?.(10);
+  }, []);
+
+  const onDragEnd = useCallback(
+    ({ active, over }: DragEndEvent) => {
+      setActiveId(null);
+      if (!over || active.id === over.id) return;
+      const parentId = parentIdOf(String(active.id));
+      // 兜底：碰撞过滤万一放行了跨层候选，这里再挡一次
+      if (parentIdOf(String(over.id)) !== parentId) return;
+
+      // 下标必须在**完整**兄弟列表上算。dnd-kit 给的是可见子集的下标，
+      // 在「进行中 / 已完成」筛选下拿它去 arrayMove 完整列表，算出来的位置是错的。
+      const ids = siblingIds(todos, parentId);
+      reorderSiblings(
+        parentId,
+        arrayMove(ids, ids.indexOf(String(active.id)), ids.indexOf(String(over.id))),
+      );
+    },
+    [todos, parentIdOf, reorderSiblings],
+  );
+
+  const activeTodo = activeId ? todos.find((t) => t.id === activeId) ?? null : null;
+
   const roots = useMemo(() => todos.filter((t) => t.parentId === null), [todos]);
 
   const visibleTodos = useMemo(() => {
@@ -508,6 +645,28 @@ export default function TodoList() {
   }, [roots, filter]);
 
   const remaining = roots.filter((t) => !t.completed).length;
+
+  // 卡片本体抽出来给列表和拖拽浮层共用，免得两处 props 写歪
+  const renderCard = (todo: Todo) => {
+    const children = childrenOf(todo.id);
+    const runningChild = children.find((c) => c.id === runningTodoId) ?? null;
+    return (
+      <TodoItem
+        todo={todo}
+        running={runningTodoId === todo.id}
+        childCount={children.length}
+        childRunningName={runningChild?.text ?? null}
+        elapsedMs={elapsedMs}
+        onToggle={toggleTodo}
+        onRequestDelete={requestDelete}
+        onEdit={editTodo}
+        onToggleTimer={toggleTimer}
+        onAddChild={openAddChild}
+        collapsed={collapsedIds.has(todo.id)}
+        onToggleCollapse={toggleCollapse}
+      />
+    );
+  };
 
   return (
     <div className="mx-auto w-full max-w-md rounded-xl bg-white p-6 shadow-lg">
@@ -548,123 +707,135 @@ export default function TodoList() {
         ))}
       </div>
 
-      <ul className="space-y-2">
-        {visibleTodos.length === 0 ? (
-          <li className="py-6 text-center text-gray-400">
-            {todos.length === 0 ? "暂无任务，添加一条吧" : "该筛选条件下无任务"}
-          </li>
-        ) : (
-          visibleTodos.map((todo) => {
-            const children = childrenOf(todo.id);
-            const runningChild =
-              children.find((c) => c.id === runningTodoId) ?? null;
-            return (
-              <li key={todo.id}>
-                <TodoItem
-                  todo={todo}
-                  running={runningTodoId === todo.id}
-                  childCount={children.length}
-                  childRunningName={runningChild?.text ?? null}
-                  elapsedMs={elapsedMs}
-                  onToggle={toggleTodo}
-                  onRequestDelete={requestDelete}
-                  onEdit={editTodo}
-                  onToggleTimer={toggleTimer}
-                  onAddChild={openAddChild}
-                  collapsed={collapsedIds.has(todo.id)}
-                  onToggleCollapse={toggleCollapse}
-                />
-
-                {children.length > 0 && (
-                  <Collapsible open={!collapsedIds.has(todo.id)}>
-                    <ul className="ml-3 mt-2 space-y-2 border-l-2 border-blue-100 pl-3">
-                      {children.map((c) => (
-                        <li key={c.id}>
-                          <TodoItem
-                            todo={c}
-                            running={runningTodoId === c.id}
-                            childCount={0}
-                            childRunningName={null}
-                            elapsedMs={elapsedMs}
-                            onToggle={toggleTodo}
-                            onRequestDelete={requestDelete}
-                            onEdit={editTodo}
-                            onToggleTimer={toggleTimer}
-                            onAddChild={openAddChild}
-                            collapsed={false}
-                            onToggleCollapse={toggleCollapse}
-                          />
-                        </li>
-                      ))}
-                    </ul>
-                  </Collapsible>
-                )}
-
-                {addingChildFor === todo.id && (
-                  <form
-                    onSubmit={(e) => submitChild(e, todo)}
-                    className="mt-2 flex gap-2 pl-3"
-                  >
-                    <input
-                      type="text"
-                      value={childInput}
-                      onChange={(e) => setChildInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Escape") setAddingChildFor(null);
-                      }}
-                      placeholder="添加子任务..."
-                      autoFocus
-                      className="flex-1 rounded-lg border border-blue-300 px-3 py-1.5 text-sm text-gray-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-                    />
-                    <button
-                      type="submit"
-                      className="rounded-lg bg-blue-500 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-blue-600"
-                    >
-                      添加
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setAddingChildFor(null)}
-                      className="rounded-lg px-2 py-1.5 text-sm text-gray-500 transition hover:text-gray-700"
-                    >
-                      取消
-                    </button>
-                  </form>
-                )}
-
-                {migrate?.containerId === todo.id && children.length > 0 && (
-                  <div className="ml-3 mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-                    <p className="mb-2 text-xs text-amber-800">
-                      「{todo.text}」原有 {formatShort(migrate.ms)} 记录，
-                      迁到哪个子任务？
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {children.map((c) => (
-                        <button
-                          key={c.id}
-                          onClick={() => {
-                            adoptTime(todo.id, c.id);
-                            setMigrate(null);
-                          }}
-                          className="rounded-md bg-amber-500 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-amber-600"
-                        >
-                          {c.text}
-                        </button>
-                      ))}
-                      <button
-                        onClick={() => setMigrate(null)}
-                        className="rounded-md px-2.5 py-1 text-xs text-amber-700 transition hover:bg-amber-100"
-                      >
-                        暂不迁移
-                      </button>
-                    </div>
-                  </div>
-                )}
+      {/* 一级与子任务共用同一个 DndContext，各自套一个 SortableContext。
+          嵌套 SortableContext 是官方支持的（两边 id 不能重 —— 我们的是 UUID，天然不重）；
+          嵌套 DndContext 则不行，内层会和外层同时收到同一批事件。 */}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={collisionDetection}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+        onDragCancel={() => setActiveId(null)}
+      >
+        <SortableContext
+          items={visibleTodos.map((t) => t.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          <ul className="space-y-2">
+            {visibleTodos.length === 0 ? (
+              <li className="py-6 text-center text-gray-400">
+                {todos.length === 0
+                  ? "暂无任务，添加一条吧"
+                  : "该筛选条件下无任务"}
               </li>
-            );
-          })
-        )}
-      </ul>
+            ) : (
+              visibleTodos.map((todo) => {
+                const children = childrenOf(todo.id);
+                return (
+                  <SortableRow
+                    key={todo.id}
+                    id={todo.id}
+                    parentId={null}
+                    card={renderCard(todo)}
+                  >
+                    {children.length > 0 && (
+                      <Collapsible open={!collapsedIds.has(todo.id)}>
+                        <SortableContext
+                          items={children.map((c) => c.id)}
+                          strategy={verticalListSortingStrategy}
+                        >
+                          <ul className="ml-3 mt-2 space-y-2 border-l-2 border-blue-100 pl-3">
+                            {children.map((c) => (
+                              <SortableRow
+                                key={c.id}
+                                id={c.id}
+                                parentId={todo.id}
+                                card={renderCard(c)}
+                              />
+                            ))}
+                          </ul>
+                        </SortableContext>
+                      </Collapsible>
+                    )}
+
+                    {addingChildFor === todo.id && (
+                      <form
+                        onSubmit={(e) => submitChild(e, todo)}
+                        className="mt-2 flex gap-2 pl-3"
+                      >
+                        <input
+                          type="text"
+                          value={childInput}
+                          onChange={(e) => setChildInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Escape") setAddingChildFor(null);
+                          }}
+                          placeholder="添加子任务..."
+                          autoFocus
+                          className="flex-1 rounded-lg border border-blue-300 px-3 py-1.5 text-sm text-gray-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                        />
+                        <button
+                          type="submit"
+                          className="rounded-lg bg-blue-500 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-blue-600"
+                        >
+                          添加
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAddingChildFor(null)}
+                          className="rounded-lg px-2 py-1.5 text-sm text-gray-500 transition hover:text-gray-700"
+                        >
+                          取消
+                        </button>
+                      </form>
+                    )}
+
+                    {migrate?.containerId === todo.id && children.length > 0 && (
+                      <div className="ml-3 mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                        <p className="mb-2 text-xs text-amber-800">
+                          「{todo.text}」原有 {formatShort(migrate.ms)} 记录，
+                          迁到哪个子任务？
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {children.map((c) => (
+                            <button
+                              key={c.id}
+                              onClick={() => {
+                                adoptTime(todo.id, c.id);
+                                setMigrate(null);
+                              }}
+                              className="rounded-md bg-amber-500 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-amber-600"
+                            >
+                              {c.text}
+                            </button>
+                          ))}
+                          <button
+                            onClick={() => setMigrate(null)}
+                            className="rounded-md px-2.5 py-1 text-xs text-amber-700 transition hover:bg-amber-100"
+                          >
+                            暂不迁移
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </SortableRow>
+                );
+              })
+            )}
+          </ul>
+        </SortableContext>
+
+        {/* DragOverlay 默认不走 portal，渲染在它所在的位置 —— 与 <ul> 平级才不会被
+            Collapsible 的 overflow:hidden 裁掉。它必须常驻挂载、只让内容随 activeId 变：
+            整个卸载掉，放下时的下落动画就不会播。 */}
+        <DragOverlay>
+          {activeTodo ? (
+            <div className="drag-lift pointer-events-none">
+              {renderCard(activeTodo)}
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
 
       {roots.length > 0 && (
         <footer className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3 text-sm text-gray-500">
