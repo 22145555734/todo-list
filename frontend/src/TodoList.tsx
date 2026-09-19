@@ -5,13 +5,35 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type FormEvent,
   type ReactNode,
 } from "react";
+import {
+  DndContext,
+  DragOverlay,
+  MouseSensor,
+  TouchSensor,
+  closestCenter,
+  defaultDropAnimationSideEffects,
+  useDndContext,
+  useSensor,
+  useSensors,
+  type CollisionDetection,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { useStore } from "./store";
 import { useNow } from "./useNow";
 import { formatHms, formatShort } from "./time";
 import { getLevelInfo, levelFont, levelShimmer } from "./level";
+import { siblingIds } from "./reorder";
 import type { Todo } from "./types";
 
 type Filter = "all" | "active" | "completed";
@@ -107,7 +129,8 @@ const TodoItem = memo(function TodoItem({
               if (e.key === "Escape") cancelEdit();
             }}
             autoFocus
-            className="flex-1 rounded border border-blue-400 px-2 py-1 text-gray-700 outline-none focus:ring-2 focus:ring-blue-200"
+            /* select-text 抵消拖拽面继承下来的 user-select:none，否则编辑时选不中已有文字 */
+            className="flex-1 select-text rounded border border-blue-400 px-2 py-1 text-gray-700 outline-none focus:ring-2 focus:ring-blue-200"
           />
         ) : (
           <span
@@ -279,6 +302,147 @@ const TodoItem = memo(function TodoItem({
   );
 });
 
+/**
+ * 收起 / 展开那一下的时长（毫秒）。
+ *
+ * **三处必须跟着它走，不能各写各的**：`Collapsible` 的高度过渡、浮层里 `OverlayFolded`
+ * 的折叠、拖拽期间 `<RemeasureWhileCollapsing>` 逐帧重测的窗口 —— 列表和浮层演的是
+ * 同一件事，时长对不上就会各收各的。
+ *
+ * 松开鼠标之后跑的是两段**并行**的动画：浮层飞回槽位（见 `DROP_MS`）和列表那一行展开
+ * （本常量）。两者都从松手那一刻起算，谁长谁定整段的手感。
+ */
+const FOLD_MS = 140;
+/** CSS 过渡跑完之后兜底卸载 / 落位的定时。比过渡略长一点，等 `transitionend` 先到。 */
+const FOLD_SETTLE_MS = FOLD_MS + 50;
+
+/**
+ * 放下后浮层飞回槽位那一段的时长（毫秒）。库默认 250。
+ *
+ * 有意**比 `FOLD_MS` 长**：收起 / 展开是原地的高度变化，快了不觉得；浮层是从手指那儿
+ * 飞回落点的位移，同样时长会显得「啪」一下落下来。205 是用户真机上试出来的数，
+ * 别按比例去推。
+ */
+const DROP_MS = 205;
+
+/**
+ * 一行可拖拽的事项。
+ *
+ * `setNodeRef` 挂在 `<li>` 上、`listeners` 挂在内层卡片 div 上，**这两者必须分开**：
+ *
+ * - 测量单位得是整行（卡片 + 它下面的子任务列表），否则邻居的让位距离只按卡片高度算，
+ *   带子任务的合集落地时会再跳一截。
+ * - `listeners` 若跟着挂到 `<li>`，由于子任务列表在 `<li>` 里面，按子任务会同时命中内外两层
+ *   激活器，而 dnd-kit 只保留一个 active —— 结果是「拖子任务变成了拖整个合集」。
+ */
+function SortableRow({
+  id,
+  parentId,
+  card,
+  children,
+}: {
+  id: string;
+  parentId: string | null;
+  card: ReactNode;
+  children?: ReactNode;
+}) {
+  const { setNodeRef, listeners, transform, transition, isDragging } =
+    useSortable({ id, data: { parentId } });
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={{
+        transform: transform
+          ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
+          : undefined,
+        transition,
+      }}
+    >
+      {/* 拖拽期间**整行一起隐掉**，不只是卡片：子任务这会儿已经跟着浮层卡飘走了，
+          原地再画一份就是重影。
+          隐的是外面这一层，`listeners` 仍只挂在卡片那一层 —— 挂到外面来的话，按下子任务
+          会同时命中内外两个激活器（dnd-kit 只保留一个 active），变成「拖子任务 = 拖整个合集」。
+          这一行在拖拽期间仍然会变矮（子任务那份 `Collapsible` 被强制收起，列表好合上），
+          所以还得靠 `<RemeasureWhileCollapsing>` 催 dnd-kit 重测。 */}
+      <div className={isDragging ? "opacity-0" : ""}>
+        {/* touch-action 只能用 manipulation —— 整卡都是拖拽面，用 none 会让页面彻底划不动 */}
+        <div
+          {...listeners}
+          className="touch-manipulation select-none [-webkit-touch-callout:none]"
+        >
+          {card}
+        </div>
+        {children}
+      </div>
+    </li>
+  );
+}
+
+/**
+ * 浮层里那一份子任务：**挂上时从自然高度收到 0** —— 也就是「边浮边收回」。
+ *
+ * 只做收起、不做展开：浮层一放下就整个卸载了，没有展开这一回事。
+ * 不用 `Collapsible` 是因为它的入场要靠 `open` 从 false 翻到 true，而这里需要的是反过来
+ * —— 出生就是展开的，然后收掉；直接在这里当场量高度最省事。
+ */
+function OverlayFolded({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = `${el.scrollHeight}px`;
+    void el.offsetHeight; // 强制回流，让起点落在自然高度上（否则 auto → 0px 不产生过渡）
+    el.style.height = "0px";
+  }, []);
+
+  return (
+    <div ref={ref} style={{ overflow: "hidden", transition: `height ${FOLD_MS}ms ease` }}>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * 拖拽期间被拖那一行的子任务正在收起，节点在逐帧变矮 —— 而 dnd-kit **只在「拖拽开始」
+ * 和「droppable 增删」时重测各行矩形**（`useDroppableMeasuring`），它不认节点变矮。
+ * 不催它的话，邻居的让位距离会一直按「还没收起」的旧矩形算，比不收起还歪。
+ *
+ * 三个前提都查过库的产物，不是猜的：
+ * - `droppable.measure` 是 `getTransformAgnosticClientRect`（`ignoreTransform: true`），
+ *   会**扣掉元素自身的位移 transform** —— 所以反复重测是收敛的，不会把让位的
+ *   transform 叠加进去
+ * - `frequency` 默认是字符串 `'optimized'`，而定时重测那个 effect 有
+ *   `typeof frequency !== 'number'` 的早退 —— 库自己**没有任何周期性重测**，
+ *   `MeasuringStrategy` 的三个值都只影响「什么时候允许测」，不影响「多久测一次」
+ * - 传**空数组**给 `measureDroppableContainers()` 才会全量重测（传了 id 就是「只测队列里的、
+ *   其余复用缓存」）。类型声明把这个参数写成必填（`store/types.d.ts:81`），而实现里有
+ *   `ids === void 0 → []` 的兜底 —— 两者对不上，所以这里显式传 `[]`
+ *
+ * **只跑收起动画那么长，不是整个拖拽过程**：每测一次都要重渲染整个列表，全程 60fps
+ * 地跑在低端机上会掉帧。
+ */
+function RemeasureWhileCollapsing({ active }: { active: boolean }) {
+  const { measureDroppableContainers } = useDndContext();
+
+  useEffect(() => {
+    if (!active) return;
+    let raf = requestAnimationFrame(function tick() {
+      measureDroppableContainers([]);
+      raf = requestAnimationFrame(tick);
+    });
+    // 与 Collapsible 的收起等长（见 FOLD_MS / FOLD_SETTLE_MS）
+    const timer = window.setTimeout(() => cancelAnimationFrame(raf), FOLD_SETTLE_MS);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(timer);
+    };
+  }, [active, measureDroppableContainers]);
+
+  return null;
+}
+
 /** 可展开/收起容器：展开时做高度入场动画，收起时高度归零、动画结束后卸载内容 */
 function Collapsible({
   open,
@@ -297,8 +461,14 @@ function Collapsible({
   }, [open]);
 
   // 入场动画：内容刚挂载后（此时才能测到自然高度）从 0 过渡到自然高度
+  //
+  // 依赖里**必须带上 `open`**，不能只看 `mounted`。收起动画走到一半又被展开时
+  // （拖拽尤其容易：按下、浮起、随手一放，前后不到 250ms），`mounted` 从头到尾都是
+  // true，只盯它的 effect 根本不会重跑 —— 于是行内 height 停在退场动画设的 `0px` 上，
+  // 子任务再也回不来，且没有任何报错。（手点「收起」后立刻再点「展开」也会踩到。）
   useEffect(() => {
-    if (!mounted) return;
+    if (!open) return; // 只在「开」的方向跑；「关」由下面那个 effect 负责
+    if (!mounted) return; // 内容还没挂上，量不到高度，等 mounted 变了会再跑一次
     if (first.current) {
       first.current = false;
       return; // 首次渲染直接落位，不做动画
@@ -311,13 +481,13 @@ function Collapsible({
     const finish = () => {
       el.style.height = "auto";
     };
-    const timer = window.setTimeout(finish, 300);
+    const timer = window.setTimeout(finish, FOLD_SETTLE_MS);
     el.addEventListener("transitionend", finish, { once: true });
     return () => {
       window.clearTimeout(timer);
       el.removeEventListener("transitionend", finish);
     };
-  }, [mounted]);
+  }, [open, mounted]);
 
   // 退场动画：高度归零，动画结束后卸载内容（否则元素留在 DOM 里仍可被聚焦）
   useEffect(() => {
@@ -328,7 +498,7 @@ function Collapsible({
     void el.offsetHeight;
     el.style.height = "0px";
     const finish = () => setMounted(false);
-    const timer = window.setTimeout(finish, 300);
+    const timer = window.setTimeout(finish, FOLD_SETTLE_MS);
     el.addEventListener("transitionend", finish, { once: true });
     return () => {
       window.clearTimeout(timer);
@@ -339,7 +509,7 @@ function Collapsible({
   return (
     <div
       ref={ref}
-      style={{ overflow: "hidden", transition: "height 250ms ease" }}
+      style={{ overflow: "hidden", transition: `height ${FOLD_MS}ms ease` }}
     >
       {mounted ? children : null}
     </div>
@@ -424,6 +594,7 @@ export default function TodoList() {
     toggleTodo,
     deleteTodo,
     editTodo,
+    reorderSiblings,
     clearCompleted,
     toggleTimer,
     adoptTime,
@@ -494,6 +665,103 @@ export default function TodoList() {
     }
   };
 
+  // 电脑靠鼠标、手机靠触摸，天然分流，正好对上「PC 直接拖 / 手机长按 1 秒」：
+  // - MouseSensor 用 distance：鼠标移动 4px 才算拖，纯点击（勾选、双击编辑）不触发。
+  //   这里**不能**给 tolerance —— 在 distance 约束下 tolerance 是「超过即取消」，
+  //   鼠标一甩超过 8px 反而永远拖不起来。
+  // - TouchSensor 用 delay：按住 1 秒才算，期间手指移动超过 10px 就中止激活 —— 这是列表
+  //   还能正常滑动的关键。tolerance 在这个约束下是**必填**，缺了会在库内部解构 undefined 崩掉。
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 1000, tolerance: 10 },
+    }),
+  );
+
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  const parentIdOf = useCallback(
+    (id: string) => todos.find((t) => t.id === id)?.parentId ?? null,
+    [todos],
+  );
+
+  // 只把同分组的项当候选，跨层自然落空。顺带规避多容器下 closestCenter 的碰撞闪烁
+  // （等距时在两个容器间来回跳，dnd-kit#1213）。
+  const collisionDetection = useCallback<CollisionDetection>(
+    ({ droppableContainers, active, ...args }) => {
+      const parentId = parentIdOf(String(active.id));
+      return closestCenter({
+        ...args,
+        active,
+        droppableContainers: droppableContainers.filter(
+          (c) =>
+            (c.data.current as { parentId?: string | null } | undefined)
+              ?.parentId === parentId,
+        ),
+      });
+    },
+    [parentIdOf],
+  );
+
+  const onDragStart = useCallback((e: DragStartEvent) => {
+    setActiveId(String(e.active.id));
+    // 长按成功的触感反馈。部分 WebView（如百度 App）会屏蔽它 —— 所以浮起动画才是主反馈，
+    // 拿不到就算了，不能依赖这一下震动。
+    navigator.vibrate?.(10);
+  }, []);
+
+  const onDragEnd = useCallback(
+    ({ active, over }: DragEndEvent) => {
+      const id = String(active.id);
+      setActiveId(null);
+      // 拖主任务时整个列表的合集会一起收起（见 dragCollapsesAll）。这里把状态落实下来 ——
+      // 否则松手的一瞬间 activeId 归 null，它们会齐刷刷弹回展开。
+      // 本来就收起的不用管：只在集合变大时才换新 Set，React 才会重渲染。
+      // 按 Esc 取消的不走这里：取消应该恢复原状，见 onDragCancel。
+      if (todos.find((t) => t.id === id)?.parentId === null) {
+        setCollapsedIds((prev) => {
+          const next = new Set(prev);
+          // 某行的 id 出现在别人（或自己）的 parentId 里，它就带子任务
+          const parents = new Set(todos.map((t) => t.parentId));
+          for (const t of todos) {
+            if (t.parentId === null && parents.has(t.id)) next.add(t.id);
+          }
+          return next.size === prev.size ? prev : next;
+        });
+      }
+      if (!over || active.id === over.id) return;
+      const parentId = parentIdOf(String(active.id));
+      // 兜底：碰撞过滤万一放行了跨层候选，这里再挡一次
+      if (parentIdOf(String(over.id)) !== parentId) return;
+
+      // 下标必须在**完整**兄弟列表上算。dnd-kit 给的是可见子集的下标，
+      // 在「进行中 / 已完成」筛选下拿它去 arrayMove 完整列表，算出来的位置是错的。
+      const ids = siblingIds(todos, parentId);
+      reorderSiblings(
+        parentId,
+        arrayMove(ids, ids.indexOf(String(active.id)), ids.indexOf(String(over.id))),
+      );
+    },
+    [todos, parentIdOf, reorderSiblings, childrenOf],
+  );
+
+  const activeTodo = activeId ? todos.find((t) => t.id === activeId) ?? null : null;
+  const overlayChildren = activeTodo ? childrenOf(activeTodo.id) : [];
+
+  /**
+   * 拖的是**主任务** —— 这时候整个列表的合集一起收起（不只是被拖那一个），
+   * 列表一下变紧凑，好看清往哪儿落。
+   *
+   * 拖子任务时不能这么干：子任务就在自己合集里排，把它收起来就没得拖了。
+   */
+  const dragCollapsesAll = activeTodo !== null && activeTodo.parentId === null;
+
+  // 确实有展开着的合集正在收 —— 只有这种情况才有收起动画，也才需要逐帧重测。
+  // 一遍扫完（有子任务的行，其 parentId 必然出现在某行的 parentId 里）
+  const collapsing =
+    dragCollapsesAll &&
+    todos.some((t) => t.parentId !== null && !collapsedIds.has(t.parentId));
+
   const roots = useMemo(() => todos.filter((t) => t.parentId === null), [todos]);
 
   const visibleTodos = useMemo(() => {
@@ -508,6 +776,28 @@ export default function TodoList() {
   }, [roots, filter]);
 
   const remaining = roots.filter((t) => !t.completed).length;
+
+  // 卡片本体抽出来给列表和拖拽浮层共用，免得两处 props 写歪
+  const renderCard = (todo: Todo) => {
+    const children = childrenOf(todo.id);
+    const runningChild = children.find((c) => c.id === runningTodoId) ?? null;
+    return (
+      <TodoItem
+        todo={todo}
+        running={runningTodoId === todo.id}
+        childCount={children.length}
+        childRunningName={runningChild?.text ?? null}
+        elapsedMs={elapsedMs}
+        onToggle={toggleTodo}
+        onRequestDelete={requestDelete}
+        onEdit={editTodo}
+        onToggleTimer={toggleTimer}
+        onAddChild={openAddChild}
+        collapsed={collapsedIds.has(todo.id)}
+        onToggleCollapse={toggleCollapse}
+      />
+    );
+  };
 
   return (
     <div className="mx-auto w-full max-w-md rounded-xl bg-white p-6 shadow-lg">
@@ -548,123 +838,197 @@ export default function TodoList() {
         ))}
       </div>
 
-      <ul className="space-y-2">
-        {visibleTodos.length === 0 ? (
-          <li className="py-6 text-center text-gray-400">
-            {todos.length === 0 ? "暂无任务，添加一条吧" : "该筛选条件下无任务"}
-          </li>
-        ) : (
-          visibleTodos.map((todo) => {
-            const children = childrenOf(todo.id);
-            const runningChild =
-              children.find((c) => c.id === runningTodoId) ?? null;
-            return (
-              <li key={todo.id}>
-                <TodoItem
-                  todo={todo}
-                  running={runningTodoId === todo.id}
-                  childCount={children.length}
-                  childRunningName={runningChild?.text ?? null}
-                  elapsedMs={elapsedMs}
-                  onToggle={toggleTodo}
-                  onRequestDelete={requestDelete}
-                  onEdit={editTodo}
-                  onToggleTimer={toggleTimer}
-                  onAddChild={openAddChild}
-                  collapsed={collapsedIds.has(todo.id)}
-                  onToggleCollapse={toggleCollapse}
-                />
+      {/* 一级与子任务共用同一个 DndContext，各自套一个 SortableContext。
+          嵌套 SortableContext 是官方支持的（两边 id 不能重 —— 我们的是 UUID，天然不重）；
+          嵌套 DndContext 则不行，内层会和外层同时收到同一批事件。 */}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={collisionDetection}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+        onDragCancel={() => setActiveId(null)}
+      >
+        <RemeasureWhileCollapsing active={collapsing} />
+        <SortableContext
+          items={visibleTodos.map((t) => t.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          <ul className="space-y-2">
+            {visibleTodos.length === 0 ? (
+              <li className="py-6 text-center text-gray-400">
+                {todos.length === 0
+                  ? "暂无任务，添加一条吧"
+                  : "该筛选条件下无任务"}
+              </li>
+            ) : (
+              visibleTodos.map((todo) => {
+                const children = childrenOf(todo.id);
+                return (
+                  <SortableRow
+                    key={todo.id}
+                    id={todo.id}
+                    parentId={null}
+                    card={renderCard(todo)}
+                  >
+                    {/* 拖这一行时把它的子任务收起来，落地再展开 —— 走 Collapsible 正常的
+                        收起/展开动画，和手点「收起」看起来一样。
+                        本来就没展开的行 open 本来就是 false，不受影响。
+                        收起动画期间要靠 <RemeasureWhileCollapsing> 催 dnd-kit 重测，原因见那边。 */}
+                    {children.length > 0 && (
+                      <Collapsible
+                        open={!collapsedIds.has(todo.id) && !dragCollapsesAll}
+                      >
+                        <SortableContext
+                          items={children.map((c) => c.id)}
+                          strategy={verticalListSortingStrategy}
+                        >
+                          <ul className="ml-3 mt-2 space-y-2 border-l-2 border-blue-100 pl-3">
+                            {children.map((c) => (
+                              <SortableRow
+                                key={c.id}
+                                id={c.id}
+                                parentId={todo.id}
+                                card={renderCard(c)}
+                              />
+                            ))}
+                          </ul>
+                        </SortableContext>
+                      </Collapsible>
+                    )}
 
-                {children.length > 0 && (
-                  <Collapsible open={!collapsedIds.has(todo.id)}>
-                    <ul className="ml-3 mt-2 space-y-2 border-l-2 border-blue-100 pl-3">
-                      {children.map((c) => (
-                        <li key={c.id}>
-                          <TodoItem
-                            todo={c}
-                            running={runningTodoId === c.id}
-                            childCount={0}
-                            childRunningName={null}
-                            elapsedMs={elapsedMs}
-                            onToggle={toggleTodo}
-                            onRequestDelete={requestDelete}
-                            onEdit={editTodo}
-                            onToggleTimer={toggleTimer}
-                            onAddChild={openAddChild}
-                            collapsed={false}
-                            onToggleCollapse={toggleCollapse}
-                          />
+                    {addingChildFor === todo.id && (
+                      <form
+                        onSubmit={(e) => submitChild(e, todo)}
+                        className="mt-2 flex gap-2 pl-3"
+                      >
+                        <input
+                          type="text"
+                          value={childInput}
+                          onChange={(e) => setChildInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Escape") setAddingChildFor(null);
+                          }}
+                          placeholder="添加子任务..."
+                          autoFocus
+                          className="flex-1 rounded-lg border border-blue-300 px-3 py-1.5 text-sm text-gray-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                        />
+                        <button
+                          type="submit"
+                          className="rounded-lg bg-blue-500 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-blue-600"
+                        >
+                          添加
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAddingChildFor(null)}
+                          className="rounded-lg px-2 py-1.5 text-sm text-gray-500 transition hover:text-gray-700"
+                        >
+                          取消
+                        </button>
+                      </form>
+                    )}
+
+                    {migrate?.containerId === todo.id && children.length > 0 && (
+                      <div className="ml-3 mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                        <p className="mb-2 text-xs text-amber-800">
+                          「{todo.text}」原有 {formatShort(migrate.ms)} 记录，
+                          迁到哪个子任务？
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {children.map((c) => (
+                            <button
+                              key={c.id}
+                              onClick={() => {
+                                adoptTime(todo.id, c.id);
+                                setMigrate(null);
+                              }}
+                              className="rounded-md bg-amber-500 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-amber-600"
+                            >
+                              {c.text}
+                            </button>
+                          ))}
+                          <button
+                            onClick={() => setMigrate(null)}
+                            className="rounded-md px-2.5 py-1 text-xs text-amber-700 transition hover:bg-amber-100"
+                          >
+                            暂不迁移
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </SortableRow>
+                );
+              })
+            )}
+          </ul>
+        </SortableContext>
+
+        {/* DragOverlay 默认不走 portal，渲染在它所在的位置 —— 与 <ul> 平级才不会被
+            Collapsible 的 overflow:hidden 裁掉。它必须常驻挂载、只让内容随 activeId 变：
+            整个卸载掉，放下时的下落动画就不会播。 */}
+        {/* 放下后浮层飞回槽位那一段，时长见 `DROP_MS`。keyframes 仍走库的默认值
+            （`createDefaultDropAnimation` 是 `{...默认, ...传入}`，漏传的字段不会丢）。 */}
+        <DragOverlay
+          dropAnimation={{
+            duration: DROP_MS,
+            // 参数要**整个透传**给库的默认实现 —— 它要的不止 active / dragOverlay，
+            // 还有 draggableNodes、droppableContainers、measuringConfiguration
+            sideEffects: (params) => {
+              // 库默认会把原位置那张隐掉，这里得原样保留
+              const cleanup = defaultDropAnimationSideEffects({
+                styles: { active: { opacity: "0" } },
+              })(params);
+
+              // 让浮层里的框在落地过程中把阴影收掉（见 index.css 的 `.drag-settling`）。
+              //
+              // **必须直接动 DOM，React 这条路走不通**：库的 `AnimationManager` 在放下时会
+              // 克隆一份前一帧的 children 快照继续渲染、等动画跑完才卸载，整个浮层子树在这
+              // 期间是**冻结**的 —— 改 state 换 className 传不进去。
+              //
+              // 也**不做清理**：这棵子树紧接着就被卸载了，摘掉类反而会闪一帧弹回大阴影。
+              params.dragOverlay.node.classList.add("drag-settling");
+
+              return () => cleanup?.();
+            },
+          }}
+        >
+          {activeTodo ? (
+            /* 时长从 TS 常量下发给 CSS（`--lift-ms` / `--drop-ms`），别在 index.css 里再抄一遍 */
+            <div
+              className="pointer-events-none"
+              style={
+                {
+                  "--lift-ms": `${FOLD_MS}ms`,
+                  "--drop-ms": `${DROP_MS}ms`,
+                } as CSSProperties
+              }
+            >
+              {/* `drag-lift`（放大 + 上移 + 阴影）**必须挂在每个框自己身上，不能挂在这层外壳上**：
+                  外壳把卡片之间的空隙也包进去，阴影会从缝里透出来连成一整块，看着像一块大白板
+                  浮起来，而不是几个框浮起来。
+                  子任务那一份不带列表里的缩进和左边那条蓝线（`border-l-2 border-blue-100`）——
+                  那是列表的装饰，跟着浮起来就露馅了。本来就收起的合集不带这一份子任务。 */}
+              <div className="drag-lift">{renderCard(activeTodo)}</div>
+              {!collapsedIds.has(activeTodo.id) &&
+                overlayChildren.length > 0 && (
+                  <OverlayFolded>
+                    {/* 横向尺寸必须和列表里那份**逐项对齐**：`ml-3` + `pl-3` + 2px 左边框，
+                        三者共同决定子任务框比主卡窄 26px。所以那条蓝线只能设成 `border-transparent`
+                        让它看不见，**不能把 `border-l-2` 删掉** —— 删了宽度就少 2px，
+                        子任务框会跟主卡一样宽。 */}
+                    <ul className="ml-3 mt-2 space-y-2 border-l-2 border-transparent pl-3">
+                      {overlayChildren.map((c) => (
+                        <li key={c.id} className="drag-lift-soft">
+                          {renderCard(c)}
                         </li>
                       ))}
                     </ul>
-                  </Collapsible>
+                  </OverlayFolded>
                 )}
-
-                {addingChildFor === todo.id && (
-                  <form
-                    onSubmit={(e) => submitChild(e, todo)}
-                    className="mt-2 flex gap-2 pl-3"
-                  >
-                    <input
-                      type="text"
-                      value={childInput}
-                      onChange={(e) => setChildInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Escape") setAddingChildFor(null);
-                      }}
-                      placeholder="添加子任务..."
-                      autoFocus
-                      className="flex-1 rounded-lg border border-blue-300 px-3 py-1.5 text-sm text-gray-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-                    />
-                    <button
-                      type="submit"
-                      className="rounded-lg bg-blue-500 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-blue-600"
-                    >
-                      添加
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setAddingChildFor(null)}
-                      className="rounded-lg px-2 py-1.5 text-sm text-gray-500 transition hover:text-gray-700"
-                    >
-                      取消
-                    </button>
-                  </form>
-                )}
-
-                {migrate?.containerId === todo.id && children.length > 0 && (
-                  <div className="ml-3 mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-                    <p className="mb-2 text-xs text-amber-800">
-                      「{todo.text}」原有 {formatShort(migrate.ms)} 记录，
-                      迁到哪个子任务？
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {children.map((c) => (
-                        <button
-                          key={c.id}
-                          onClick={() => {
-                            adoptTime(todo.id, c.id);
-                            setMigrate(null);
-                          }}
-                          className="rounded-md bg-amber-500 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-amber-600"
-                        >
-                          {c.text}
-                        </button>
-                      ))}
-                      <button
-                        onClick={() => setMigrate(null)}
-                        className="rounded-md px-2.5 py-1 text-xs text-amber-700 transition hover:bg-amber-100"
-                      >
-                        暂不迁移
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </li>
-            );
-          })
-        )}
-      </ul>
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
 
       {roots.length > 0 && (
         <footer className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3 text-sm text-gray-500">

@@ -1,8 +1,8 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import TodoList from "./TodoList";
-import { StoreProvider } from "./store";
-import { __reset, __seed } from "./api";
+import { StoreProvider, useStore } from "./store";
+import { __reset, __seed, api } from "./api";
 import type { TimeSession, Todo } from "./types";
 
 vi.mock("./api", () => {
@@ -65,6 +65,8 @@ vi.mock("./api", () => {
         s.end === null && s.todoId === id ? { ...s, end } : s,
       );
     }),
+    // 顺序由 store 乐观更新，这里只记调用（要断言 payload 就查这个 mock）
+    reorderTodos: vi.fn(async () => {}),
     adoptTime: vi.fn(async (containerId: string, targetId: string) => {
       const container = todos.find((t) => t.id === containerId);
       const target = todos.find((t) => t.id === targetId);
@@ -439,4 +441,98 @@ test("加子任务时提示迁移合集已有的计时", async () => {
   await waitFor(() =>
     expect(screen.queryByText("暂不迁移")).not.toBeInTheDocument(),
   );
+});
+
+/**
+ * 拖拽在 jsdom 里跑不起来（getBoundingClientRect 恒为 0，碰撞和让位全部退化成 0），
+ * 所以 store 的乐观更新与回滚只能绕开 dnd-kit、直接驱动 —— 再由真实拖拽在 PC / 真机上验。
+ *
+ * 这个 Probe 放在本文件而不是另起 store.test.tsx，是为了复用上面那份 ./api 内存 mock。
+ */
+function OrderProbe() {
+  const { todos, error, reorderSiblings } = useStore();
+  const containerId = todos.find((t) => t.parentId !== null)?.parentId ?? null;
+  const roots = todos.filter((t) => t.parentId === null);
+  const kids = todos.filter((t) => t.parentId === containerId);
+  return (
+    <div>
+      <span data-testid="roots">{roots.map((t) => t.text).join(",")}</span>
+      <span data-testid="kids">{kids.map((t) => t.text).join(",")}</span>
+      <span data-testid="error">{error ?? ""}</span>
+      <button onClick={() => reorderSiblings(null, roots.map((t) => t.id).reverse())}>
+        反转顶层
+      </button>
+      <button
+        onClick={() => reorderSiblings(containerId, kids.map((t) => t.id).reverse())}
+      >
+        反转子任务
+      </button>
+    </div>
+  );
+}
+
+const ORDER_TODOS: Todo[] = [
+  { id: "a", text: "A", completed: false, parentId: null },
+  { id: "b", text: "B", completed: false, parentId: null },
+  { id: "c", text: "C", completed: false, parentId: null },
+  { id: "p", text: "P", completed: false, parentId: null },
+  { id: "p1", text: "P1", completed: false, parentId: "p" },
+  { id: "p2", text: "P2", completed: false, parentId: "p" },
+];
+
+describe("拖拽排序（store 层）", () => {
+  function renderProbe() {
+    localStorage.setItem("todo-token", "test-token"); // 有 token 才会去拉数据
+    __seed(ORDER_TODOS, []);
+    return render(
+      <StoreProvider>
+        <OrderProbe />
+      </StoreProvider>,
+    );
+  }
+
+  test("本地先改、不等接口回来（乐观更新）", async () => {
+    const user = userEvent.setup();
+    // 永不 resolve：顺序若变了，就只可能是乐观更新干的，不可能是接口回包
+    vi.mocked(api.reorderTodos).mockReturnValueOnce(new Promise<void>(() => {}));
+    renderProbe();
+    await waitFor(() =>
+      expect(screen.getByTestId("roots")).toHaveTextContent("A,B,C,P"),
+    );
+
+    await user.click(screen.getByRole("button", { name: "反转顶层" }));
+
+    expect(screen.getByTestId("roots")).toHaveTextContent("P,C,B,A");
+    expect(api.reorderTodos).toHaveBeenCalledWith(null, ["p", "c", "b", "a"]);
+  });
+
+  test("拖子任务只动该合集内部，顶层顺序不受影响", async () => {
+    const user = userEvent.setup();
+    renderProbe();
+    await waitFor(() =>
+      expect(screen.getByTestId("kids")).toHaveTextContent("P1,P2"),
+    );
+
+    await user.click(screen.getByRole("button", { name: "反转子任务" }));
+
+    expect(screen.getByTestId("kids")).toHaveTextContent("P2,P1");
+    expect(screen.getByTestId("roots")).toHaveTextContent("A,B,C,P");
+    expect(api.reorderTodos).toHaveBeenCalledWith("p", ["p2", "p1"]);
+  });
+
+  test("请求失败时回滚到拖之前的顺序，并把错误抛到界面上", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.reorderTodos).mockRejectedValueOnce(new Error("排序失败"));
+    renderProbe();
+    await waitFor(() =>
+      expect(screen.getByTestId("roots")).toHaveTextContent("A,B,C,P"),
+    );
+
+    await user.click(screen.getByRole("button", { name: "反转顶层" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("error")).toHaveTextContent("排序失败"),
+    );
+    expect(screen.getByTestId("roots")).toHaveTextContent("A,B,C,P");
+  });
 });

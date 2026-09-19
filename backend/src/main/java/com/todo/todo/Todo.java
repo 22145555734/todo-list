@@ -23,6 +23,16 @@ public class Todo {
     @Column(length = 36)
     private String parentId;
 
+    /**
+     * 手动排序用的位次，**在同一 (userId, parentId) 分组内**从 0 起连续编号，越小越靠前。
+     *
+     * <p>刻意可空：加列时 ddl-auto 只会 ADD COLUMN 而不会回填，已有行先是 null，
+     * 由启动时的 {@link TodoOrderBackfill} 补上；补完之后新建的事项一律在 create() 里带上值，
+     * 不会再出现 null。之所以没有写成 not null，就是为了让这次加列能平滑落在既有数据上。
+     */
+    @Column
+    private Integer sortOrder;
+
     @Column(nullable = false)
     private boolean completed;
 
@@ -35,12 +45,13 @@ public class Todo {
     public Todo() {}
 
     public Todo(
-            String id, Long userId, String text, String parentId,
+            String id, Long userId, String text, String parentId, Integer sortOrder,
             boolean completed, Long createdAt, Long updatedAt) {
         this.id = id;
         this.userId = userId;
         this.text = text;
         this.parentId = parentId;
+        this.sortOrder = sortOrder;
         this.completed = completed;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
@@ -54,6 +65,8 @@ public class Todo {
     public void setText(String text) { this.text = text; }
     public String getParentId() { return parentId; }
     public void setParentId(String parentId) { this.parentId = parentId; }
+    public Integer getSortOrder() { return sortOrder; }
+    public void setSortOrder(Integer sortOrder) { this.sortOrder = sortOrder; }
     public boolean isCompleted() { return completed; }
     public void setCompleted(boolean completed) { this.completed = completed; }
     public Long getCreatedAt() { return createdAt; }

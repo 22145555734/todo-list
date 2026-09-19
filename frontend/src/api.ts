@@ -68,6 +68,13 @@ export const api = {
   deleteTodo(id: string) {
     return request<void>(`/todos/${id}`, { method: "DELETE" });
   },
+  /** 重排同一层级的兄弟事项。orderedIds 要是该分组**全部**事项的新顺序，不是当前可见的子集 */
+  reorderTodos(parentId: string | null, orderedIds: string[]) {
+    return request<void>("/todos/order", {
+      method: "PUT",
+      body: JSON.stringify({ parentId, orderedIds }),
+    });
+  },
   clearCompleted() {
     return request<void>("/todos/completed", { method: "DELETE" });
   },
