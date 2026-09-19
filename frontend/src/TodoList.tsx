@@ -407,8 +407,14 @@ function Collapsible({
   }, [open]);
 
   // 入场动画：内容刚挂载后（此时才能测到自然高度）从 0 过渡到自然高度
+  //
+  // 依赖里**必须带上 `open`**，不能只看 `mounted`。收起动画走到一半又被展开时
+  // （拖拽尤其容易：按下、浮起、随手一放，前后不到 250ms），`mounted` 从头到尾都是
+  // true，只盯它的 effect 根本不会重跑 —— 于是行内 height 停在退场动画设的 `0px` 上，
+  // 子任务再也回不来，且没有任何报错。（手点「收起」后立刻再点「展开」也会踩到。）
   useEffect(() => {
-    if (!mounted) return;
+    if (!open) return; // 只在「开」的方向跑；「关」由下面那个 effect 负责
+    if (!mounted) return; // 内容还没挂上，量不到高度，等 mounted 变了会再跑一次
     if (first.current) {
       first.current = false;
       return; // 首次渲染直接落位，不做动画
@@ -427,7 +433,7 @@ function Collapsible({
       window.clearTimeout(timer);
       el.removeEventListener("transitionend", finish);
     };
-  }, [mounted]);
+  }, [open, mounted]);
 
   // 退场动画：高度归零，动画结束后卸载内容（否则元素留在 DOM 里仍可被聚焦）
   useEffect(() => {
