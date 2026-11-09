@@ -53,13 +53,20 @@ export const api = {
   listTodos() {
     return request<Todo[]>("/todos");
   },
-  createTodo(text: string, parentId: string | null = null) {
+  createTodo(
+    text: string,
+    parentId: string | null = null,
+    budget?: { plannedMs?: number; planDate?: string },
+  ) {
     return request<Todo>("/todos", {
       method: "POST",
-      body: JSON.stringify({ text, parentId }),
+      body: JSON.stringify({ text, parentId, ...budget }),
     });
   },
-  updateTodo(id: string, patch: { text?: string; completed?: boolean }) {
+  updateTodo(
+    id: string,
+    patch: { text?: string; completed?: boolean; plannedMs?: number; planDate?: string },
+  ) {
     return request<Todo>(`/todos/${id}`, {
       method: "PATCH",
       body: JSON.stringify(patch),

@@ -53,6 +53,11 @@ interface TodoItemProps {
   /** 合集中正在计时的子任务名，无则为 null */
   childRunningName: string | null;
   elapsedMs: (todoId: string, now: number) => number;
+  /** 本项在当前预算周期内的已用时长 */
+  budgetSpentMs: (todo: Todo, now: number) => number;
+  /** 倒计时归零：把这一轮结束在预算正好用完的那一刻 */
+  onFinishBudget: (todo: Todo) => void;
+  onSetBudget: (id: string, minutes: number | null) => void;
   onToggle: (id: string) => void;
   /** 请求删除：不直接删，先弹二次确认 */
   onRequestDelete: (todo: Todo) => void;
@@ -64,12 +69,96 @@ interface TodoItemProps {
   onToggleCollapse: (id: string) => void;
 }
 
+/**
+ * 预算的小编辑器：平时只是一行灰字，点开才变成输入框。
+ * 单位固定分钟 —— 学习任务的预算按分钟记就够了，不必给小时/分钟两栏。
+ */
+function BudgetEditor({
+  plannedMs,
+  onSet,
+}: {
+  plannedMs: number | null;
+  onSet: (minutes: number | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState("");
+
+  const openEditor = () => {
+    setValue(plannedMs ? String(Math.round(plannedMs / 60000)) : "");
+    setOpen(true);
+  };
+
+  const commit = () => {
+    const m = Number(value);
+    if (!Number.isFinite(m) || m <= 0) return;
+    onSet(Math.round(m));
+    setOpen(false);
+  };
+
+  if (!open) {
+    return (
+      <button
+        onClick={openEditor}
+        title="设置预算（分钟）。没有预算的任务走正计时"
+        className="shrink-0 rounded px-1 text-xs text-gray-400 transition hover:bg-gray-100 hover:text-blue-500"
+      >
+        {plannedMs ? `预算 ${Math.round(plannedMs / 60000)}分` : "设预算"}
+      </button>
+    );
+  }
+
+  return (
+    <span className="flex shrink-0 items-center gap-1">
+      <input
+        type="number"
+        min={1}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape") setOpen(false);
+        }}
+        autoFocus
+        placeholder="分钟"
+        className="w-14 select-text rounded border border-blue-300 px-1 py-0.5 text-xs text-gray-700 outline-none focus:ring-1 focus:ring-blue-200"
+      />
+      <button
+        onClick={commit}
+        className="rounded px-1 text-xs font-medium text-blue-500 transition hover:bg-blue-50"
+      >
+        确定
+      </button>
+      {plannedMs !== null && (
+        <button
+          onClick={() => {
+            onSet(null);
+            setOpen(false);
+          }}
+          className="rounded px-1 text-xs text-gray-400 transition hover:text-red-500"
+        >
+          清除
+        </button>
+      )}
+      <button
+        onClick={() => setOpen(false)}
+        className="rounded px-1 text-xs text-gray-400 transition hover:text-gray-600"
+        aria-label="取消设置预算"
+      >
+        ×
+      </button>
+    </span>
+  );
+}
+
 const TodoItem = memo(function TodoItem({
   todo,
   running,
   childCount,
   childRunningName,
   elapsedMs,
+  budgetSpentMs,
+  onFinishBudget,
+  onSetBudget,
   onToggle,
   onRequestDelete,
   onEdit,
@@ -88,6 +177,34 @@ const TodoItem = memo(function TodoItem({
   // 仅当本项（或其子任务）正在计时时才每秒 tick，避免整个列表跟着重渲染
   const now = useNow(ticking);
   const elapsed = elapsedMs(todo.id, now);
+
+  // 预算只对叶子有意义：合集自己不计时，它身上残留的 budget 字段是加子任务之前设的，
+  // 再拿倒计时去算它只会显示一个永远不动的「待确认」。0 也当作「没有预算」。
+  const plannedMs =
+    !isContainer && todo.plannedMs && todo.plannedMs > 0 ? todo.plannedMs : null;
+  const spent = plannedMs !== null ? budgetSpentMs(todo, now) : 0;
+  const remaining = plannedMs !== null ? Math.max(0, plannedMs - spent) : 0;
+  const exhausted = plannedMs !== null && !todo.completed && spent >= plannedMs;
+
+  // 到点自动停表。归零后停在「待确认」，不替用户勾选 —— 完成与否得他自己说了算。
+  //
+  // 必须「本段计时开始时还有剩余」才武装：预算用完之后点「继续学」开的那一段，
+  // 一开始 spent 就已经 ≥ 预算，如果照着 remaining===0 就停，会刚一开就立刻被停掉。
+  const stoppingBudget = useRef<"idle" | "armed" | "done">("idle");
+  useEffect(() => {
+    if (!running) {
+      stoppingBudget.current = "idle";
+      return;
+    }
+    if (plannedMs === null) return;
+    if (remaining > 0) {
+      stoppingBudget.current = "armed";
+      return;
+    }
+    if (stoppingBudget.current !== "armed") return;
+    stoppingBudget.current = "done";
+    onFinishBudget(todo);
+  }, [running, plannedMs, remaining, onFinishBudget, todo]);
   const info = getLevelInfo(elapsed);
   const isMaxLevel = info.nextLevel === null;
   const font = levelFont(info.level);
@@ -164,19 +281,52 @@ const TodoItem = memo(function TodoItem({
         </div>
       </div>
 
-      {/* 计时区 */}
-      <div className="mt-2 flex items-center justify-between border-t border-gray-100 pt-2">
-        <div className="flex min-w-0 items-center gap-1.5">
+      {/* 计时区。
+          左侧信息可以换行、右侧按钮不换：深层子任务缩进吃掉 80px 后，
+          「剩余 00:38:00 · 已用 52分 · 预算 90分」这一串在一行里放不下，
+          不给它换行的余地就会把「待确认」压成竖排、把预算按钮顶到按钮底下。 */}
+      <div className="mt-2 flex items-center justify-between gap-2 border-t border-gray-100 pt-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-1">
           {ticking && (
             <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-green-500" />
           )}
-          <span
-            className={`font-mono text-sm tabular-nums ${
-              ticking ? "text-green-600" : "text-gray-600"
-            }`}
-          >
-            {formatHms(elapsed)}
-          </span>
+          {plannedMs !== null ? (
+            <>
+              <span
+                className={`shrink-0 whitespace-nowrap font-mono text-sm tabular-nums ${
+                  exhausted
+                    ? "text-amber-600"
+                    : ticking
+                      ? "text-green-600"
+                      : "text-gray-600"
+                }`}
+              >
+                {exhausted
+                  ? running
+                    ? `超 ${formatHms(spent - (plannedMs ?? 0))}`
+                    : "待确认"
+                  : `剩余 ${formatHms(remaining)}`}
+              </span>
+              {/* 预算总量在旁边的「预算 xx分」里已经有了，这里只说用掉多少，别重复占宽度 */}
+              <span className="whitespace-nowrap text-xs tabular-nums text-gray-400">
+                已用 {formatShort(spent)}
+              </span>
+            </>
+          ) : (
+            <span
+              className={`shrink-0 whitespace-nowrap font-mono text-sm tabular-nums ${
+                ticking ? "text-green-600" : "text-gray-600"
+              }`}
+            >
+              {formatHms(elapsed)}
+            </span>
+          )}
+          {!isContainer && (
+            <BudgetEditor
+              plannedMs={plannedMs}
+              onSet={(minutes) => onSetBudget(todo.id, minutes)}
+            />
+          )}
           {isContainer && (
             <span className="truncate text-xs text-gray-500">
               {childRunningName
@@ -195,19 +345,23 @@ const TodoItem = memo(function TodoItem({
                   : "bg-blue-500 hover:bg-blue-600 active:bg-blue-700"
               }`}
             >
-              {running ? "暂停" : "开始计时"}
+              {running
+                ? "暂停"
+                : plannedMs !== null
+                  ? exhausted
+                    ? "继续学"
+                    : "开始"
+                  : "开始计时"}
             </button>
           )}
-          {!isChild && (
-            <button
-              onClick={() => onAddChild(todo.id)}
-              className="rounded-md px-2 py-1 text-sm text-blue-500 transition hover:bg-blue-50 hover:text-blue-600"
-              aria-label="添加子任务"
-              title="把这项变成一个合集，给它的子任务分别计时"
-            >
-              + 子任务
-            </button>
-          )}
+          <button
+            onClick={() => onAddChild(todo.id)}
+            className="rounded-md px-2 py-1 text-sm text-blue-500 transition hover:bg-blue-50 hover:text-blue-600"
+            aria-label="添加子任务"
+            title="把这项变成一个合集，给它的子任务分别计时"
+          >
+            + 子任务
+          </button>
           {/* 子任务多起来会把列表撑得很长，留给用户一个收起来的开关 */}
           {isContainer && (
             <button
@@ -599,6 +753,9 @@ export default function TodoList() {
     toggleTimer,
     adoptTime,
     elapsedMs,
+    budgetSpentMs,
+    finishBudget,
+    setBudget,
   } = useStore();
 
   const [input, setInput] = useState("");
@@ -777,17 +934,29 @@ export default function TodoList() {
 
   const remaining = roots.filter((t) => !t.completed).length;
 
+  // 正在计时的后代叫什么。合集挂在好几层上面，只看直接子任务会漏掉更深的叶子。
+  const runningDescendantName = (parentId: string): string | null => {
+    let cur = runningTodoId ? todos.find((t) => t.id === runningTodoId) : undefined;
+    while (cur && cur.parentId) {
+      if (cur.parentId === parentId) return cur.text;
+      cur = todos.find((t) => t.id === cur!.parentId);
+    }
+    return null;
+  };
+
   // 卡片本体抽出来给列表和拖拽浮层共用，免得两处 props 写歪
   const renderCard = (todo: Todo) => {
     const children = childrenOf(todo.id);
-    const runningChild = children.find((c) => c.id === runningTodoId) ?? null;
     return (
       <TodoItem
         todo={todo}
         running={runningTodoId === todo.id}
         childCount={children.length}
-        childRunningName={runningChild?.text ?? null}
+        childRunningName={runningDescendantName(todo.id)}
         elapsedMs={elapsedMs}
+        budgetSpentMs={budgetSpentMs}
+        onFinishBudget={finishBudget}
+        onSetBudget={setBudget}
         onToggle={toggleTodo}
         onRequestDelete={requestDelete}
         onEdit={editTodo}
@@ -796,6 +965,106 @@ export default function TodoList() {
         collapsed={collapsedIds.has(todo.id)}
         onToggleCollapse={toggleCollapse}
       />
+    );
+  };
+
+  /**
+   * 递归渲染一行及其整棵子树。
+   *
+   * 写成普通函数而不是组件：组件必须声明在模块作用域，就得把十几个回调当 props 一层层传；
+   * 而在这里它天然能闭包到全部状态，且不会因为「组件在渲染中定义」而每次重建、把子树整棵卸载重挂。
+   * 递归出去的 `<li>` 仍是 `SortableRow` —— 每一层套自己的 `SortableContext`，
+   * 所以任意深度都能在同一层内拖拽，跨层仍然被 collisionDetection 挡住。
+   */
+  const renderNode = (todo: Todo, depth: number): ReactNode => {
+    const children = childrenOf(todo.id);
+    return (
+      <SortableRow
+        key={todo.id}
+        id={todo.id}
+        parentId={todo.parentId}
+        card={renderCard(todo)}
+      >
+        {/* 拖这一行时把它的子任务收起来，落地再展开 —— 走 Collapsible 正常的
+            收起/展开动画，和手点「收起」看起来一样。
+            本来就没展开的行 open 本来就是 false，不受影响。
+            收起动画期间要靠 <RemeasureWhileCollapsing> 催 dnd-kit 重测，原因见那边。
+            整列表一起收起只发生在拖顶层事项时，所以只有 depth 0 受 dragCollapsesAll 影响。 */}
+        {children.length > 0 && (
+          <Collapsible
+            open={
+              !collapsedIds.has(todo.id) && !(depth === 0 && dragCollapsesAll)
+            }
+          >
+            <SortableContext
+              items={children.map((c) => c.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <ul className="ml-3 mt-2 space-y-2 border-l-2 border-blue-100 pl-3">
+                {children.map((c) => renderNode(c, depth + 1))}
+              </ul>
+            </SortableContext>
+          </Collapsible>
+        )}
+
+        {addingChildFor === todo.id && (
+          <form onSubmit={(e) => submitChild(e, todo)} className="mt-2 flex gap-2 pl-3">
+            <input
+              type="text"
+              value={childInput}
+              onChange={(e) => setChildInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setAddingChildFor(null);
+              }}
+              placeholder="添加子任务..."
+              autoFocus
+              className="flex-1 rounded-lg border border-blue-300 px-3 py-1.5 text-sm text-gray-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+            />
+            <button
+              type="submit"
+              className="rounded-lg bg-blue-500 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-blue-600"
+            >
+              添加
+            </button>
+            <button
+              type="button"
+              onClick={() => setAddingChildFor(null)}
+              className="rounded-lg px-2 py-1.5 text-sm text-gray-500 transition hover:text-gray-700"
+            >
+              取消
+            </button>
+          </form>
+        )}
+
+        {migrate?.containerId === todo.id && children.length > 0 && (
+          <div className="ml-3 mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+            <p className="mb-2 text-xs text-amber-800">
+              「{todo.text}」原有 {formatShort(migrate.ms)} 记录，
+              迁到哪个子任务？
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {children.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => {
+                    adoptTime(todo.id, c.id);
+                    setMigrate(null);
+                  }}
+                  className="rounded-md bg-amber-500 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-amber-600"
+                >
+                  {c.text}
+                </button>
+              ))}
+              <button
+                onClick={() => setMigrate(null)}
+                className="rounded-md px-2.5 py-1 text-xs text-amber-700 transition hover:bg-amber-100"
+              >
+                暂不迁移
+              </button>
+            </div>
+          </div>
+        )}
+      </SortableRow>
     );
   };
 
@@ -861,104 +1130,7 @@ export default function TodoList() {
                   : "该筛选条件下无任务"}
               </li>
             ) : (
-              visibleTodos.map((todo) => {
-                const children = childrenOf(todo.id);
-                return (
-                  <SortableRow
-                    key={todo.id}
-                    id={todo.id}
-                    parentId={null}
-                    card={renderCard(todo)}
-                  >
-                    {/* 拖这一行时把它的子任务收起来，落地再展开 —— 走 Collapsible 正常的
-                        收起/展开动画，和手点「收起」看起来一样。
-                        本来就没展开的行 open 本来就是 false，不受影响。
-                        收起动画期间要靠 <RemeasureWhileCollapsing> 催 dnd-kit 重测，原因见那边。 */}
-                    {children.length > 0 && (
-                      <Collapsible
-                        open={!collapsedIds.has(todo.id) && !dragCollapsesAll}
-                      >
-                        <SortableContext
-                          items={children.map((c) => c.id)}
-                          strategy={verticalListSortingStrategy}
-                        >
-                          <ul className="ml-3 mt-2 space-y-2 border-l-2 border-blue-100 pl-3">
-                            {children.map((c) => (
-                              <SortableRow
-                                key={c.id}
-                                id={c.id}
-                                parentId={todo.id}
-                                card={renderCard(c)}
-                              />
-                            ))}
-                          </ul>
-                        </SortableContext>
-                      </Collapsible>
-                    )}
-
-                    {addingChildFor === todo.id && (
-                      <form
-                        onSubmit={(e) => submitChild(e, todo)}
-                        className="mt-2 flex gap-2 pl-3"
-                      >
-                        <input
-                          type="text"
-                          value={childInput}
-                          onChange={(e) => setChildInput(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Escape") setAddingChildFor(null);
-                          }}
-                          placeholder="添加子任务..."
-                          autoFocus
-                          className="flex-1 rounded-lg border border-blue-300 px-3 py-1.5 text-sm text-gray-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-                        />
-                        <button
-                          type="submit"
-                          className="rounded-lg bg-blue-500 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-blue-600"
-                        >
-                          添加
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setAddingChildFor(null)}
-                          className="rounded-lg px-2 py-1.5 text-sm text-gray-500 transition hover:text-gray-700"
-                        >
-                          取消
-                        </button>
-                      </form>
-                    )}
-
-                    {migrate?.containerId === todo.id && children.length > 0 && (
-                      <div className="ml-3 mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-                        <p className="mb-2 text-xs text-amber-800">
-                          「{todo.text}」原有 {formatShort(migrate.ms)} 记录，
-                          迁到哪个子任务？
-                        </p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {children.map((c) => (
-                            <button
-                              key={c.id}
-                              onClick={() => {
-                                adoptTime(todo.id, c.id);
-                                setMigrate(null);
-                              }}
-                              className="rounded-md bg-amber-500 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-amber-600"
-                            >
-                              {c.text}
-                            </button>
-                          ))}
-                          <button
-                            onClick={() => setMigrate(null)}
-                            className="rounded-md px-2.5 py-1 text-xs text-amber-700 transition hover:bg-amber-100"
-                          >
-                            暂不迁移
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </SortableRow>
-                );
-              })
+              visibleTodos.map((todo) => renderNode(todo, 0))
             )}
           </ul>
         </SortableContext>

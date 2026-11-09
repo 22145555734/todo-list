@@ -536,3 +536,150 @@ describe("拖拽排序（store 层）", () => {
     expect(screen.getByTestId("roots")).toHaveTextContent("A,B,C,P");
   });
 });
+
+test("任意深度的嵌套都能渲染出来", async () => {
+  localStorage.setItem("todo-token", "test-token"); // 有 token 才会去拉数据
+  __seed(
+    [
+      { id: "a", text: "408", completed: false, parentId: null },
+      { id: "b", text: "数据结构", completed: false, parentId: "a" },
+      { id: "c", text: "W01", completed: false, parentId: "b" },
+      {
+        id: "d",
+        text: "第1章 绪论",
+        completed: false,
+        parentId: "c",
+        plannedMs: 5400000,
+        planDate: "2026-11-09",
+      },
+    ],
+    [],
+  );
+  renderTodoList();
+
+  expect(await screen.findByText("408")).toBeInTheDocument();
+  expect(screen.getByText("数据结构")).toBeInTheDocument();
+  expect(screen.getByText("W01")).toBeInTheDocument();
+  expect(screen.getByText("第1章 绪论")).toBeInTheDocument();
+  // 每一层都能加子任务 —— 「只有顶层能加」的限制已经放开
+  expect(screen.getAllByRole("button", { name: "添加子任务" })).toHaveLength(4);
+});
+
+test("预算到点自动停表：结束在预算用完那一刻，停在待确认且不自动勾选", async () => {
+  // 真让秒级时钟走过归零：留 1.2 秒，等两个 interval 就够。用假时钟会和 React 的
+  // 调度器打架（MessageChannel 不受 vi 控制），整组用例会卡死。
+  const start = Date.now() - (3600000 - 1200);
+
+  localStorage.setItem("todo-token", "test-token");
+  __seed(
+    [
+      {
+        id: "t",
+        text: "高数",
+        completed: false,
+        parentId: null,
+        plannedMs: 3600000,
+        planDate: "2026-11-09",
+      },
+    ],
+    [
+      {
+        id: "s",
+        todoId: "t",
+        subject: "高数",
+        rootSubject: null,
+        planDate: "2026-11-09",
+        plannedMs: 3600000,
+        start,
+        end: null,
+      },
+    ],
+  );
+  renderTodoList();
+
+  // 精确停在预算用完的那一刻，而不是「发现时的那一刻」
+  await waitFor(
+    () => expect(api.pauseTimer).toHaveBeenCalledWith("t", start + 3600000),
+    { timeout: 5000 },
+  );
+  expect(await screen.findByText("待确认")).toBeInTheDocument();
+  expect(screen.getByRole("checkbox")).not.toBeChecked();
+  expect(screen.getByRole("button", { name: "继续学" })).toBeInTheDocument();
+});
+
+test("待确认的任务点勾选才算完成", async () => {
+  const user = userEvent.setup();
+  localStorage.setItem("todo-token", "test-token"); // 有 token 才会去拉数据
+  __seed(
+    [
+      {
+        id: "t",
+        text: "高数",
+        completed: false,
+        parentId: null,
+        plannedMs: 3600000,
+        planDate: "2026-11-09",
+      },
+    ],
+    [
+      {
+        id: "s",
+        todoId: "t",
+        subject: "高数",
+        rootSubject: null,
+        planDate: "2026-11-09",
+        plannedMs: 3600000,
+        start: Date.now() - 7200000,
+        end: Date.now() - 3600000,
+      },
+    ],
+  );
+  renderTodoList();
+
+  expect(await screen.findByText("待确认")).toBeInTheDocument();
+  await user.click(screen.getByRole("checkbox"));
+
+  await waitFor(() => expect(api.updateTodo).toHaveBeenCalledWith("t", { completed: true }));
+  await waitFor(() => expect(screen.getByText("高数")).toHaveClass("line-through"));
+});
+
+test("继续学：预算用完后另开一段，超出的时间单独累计", async () => {
+  const user = userEvent.setup();
+  localStorage.setItem("todo-token", "test-token"); // 有 token 才会去拉数据
+  __seed(
+    [
+      {
+        id: "t",
+        text: "高数",
+        completed: false,
+        parentId: null,
+        plannedMs: 3600000,
+        planDate: "2026-11-09",
+      },
+    ],
+    [
+      {
+        id: "s",
+        todoId: "t",
+        subject: "高数",
+        rootSubject: null,
+        planDate: "2026-11-09",
+        plannedMs: 3600000,
+        start: Date.now() - 7200000,
+        end: Date.now() - 3600000,
+      },
+    ],
+  );
+  renderTodoList();
+
+  expect(await screen.findByText("待确认")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "继续学" }));
+
+  // mock 的调用记录不清空，跨用例会累积，所以只断言「用这条任务开了一段」
+  await waitFor(() =>
+    expect(api.startTimer).toHaveBeenCalledWith("t", expect.any(Number)),
+  );
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "暂停" })).toBeInTheDocument(),
+  );
+});

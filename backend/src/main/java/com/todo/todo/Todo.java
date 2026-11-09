@@ -54,6 +54,16 @@ public class Todo {
     @Column(length = 10)
     private String planDate;
 
+    /**
+     * 本次预算用尽时提醒过一次的时间戳（毫秒）；null 表示还没提醒。
+     *
+     * <p>用来防重复：预算被用完这件事，可能由前端到点停表发现，也可能由后端定时扫描发现，
+     * 靠这个字段保证一个预算周期只发一条。改预算或换 {@code planDate} 时由
+     * {@link TodoService#update} 清空 —— 那是新的一轮。
+     */
+    @Column
+    private Long budgetNotifiedAt;
+
     @Column(nullable = false, updatable = false)
     private Long createdAt;
 
@@ -93,6 +103,8 @@ public class Todo {
     public void setPlannedMs(Long plannedMs) { this.plannedMs = plannedMs; }
     public String getPlanDate() { return planDate; }
     public void setPlanDate(String planDate) { this.planDate = planDate; }
+    public Long getBudgetNotifiedAt() { return budgetNotifiedAt; }
+    public void setBudgetNotifiedAt(Long budgetNotifiedAt) { this.budgetNotifiedAt = budgetNotifiedAt; }
     public Long getCreatedAt() { return createdAt; }
     public void setCreatedAt(Long createdAt) { this.createdAt = createdAt; }
     public Long getUpdatedAt() { return updatedAt; }

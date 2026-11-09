@@ -107,11 +107,14 @@ public class TodoService {
         if (req.completed() != null) {
             todo.setCompleted(req.completed());
         }
-        if (req.plannedMs() != null) {
+        // 预算或归属日变了就是新的一轮，提醒标记要清掉，否则新预算用完了也不会再提醒
+        if (req.plannedMs() != null && !req.plannedMs().equals(todo.getPlannedMs())) {
             todo.setPlannedMs(req.plannedMs());
+            todo.setBudgetNotifiedAt(null);
         }
-        if (req.planDate() != null) {
+        if (req.planDate() != null && !req.planDate().equals(todo.getPlanDate())) {
             todo.setPlanDate(req.planDate());
+            todo.setBudgetNotifiedAt(null);
         }
         todo.setUpdatedAt(System.currentTimeMillis());
         return toDto(todoRepository.save(todo));
