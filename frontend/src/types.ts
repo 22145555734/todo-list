@@ -8,6 +8,8 @@ export interface Todo {
   plannedMs?: number | null;
   /** 归属日 yyyy-MM-dd；null 表示不按天归属（预算按这条任务累计） */
   planDate?: string | null;
+  /** 勾上「完成」的时间戳（毫秒）；取消勾选清空，从没完成过为 null */
+  completedAt?: number | null;
 }
 
 export interface TimeSession {

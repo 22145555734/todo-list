@@ -22,7 +22,12 @@ vi.mock("./api", () => {
     }),
     updateTodo: vi.fn(
       async (id: string, patch: { text?: string; completed?: boolean }) => {
-        const updated = { ...todos.find((t) => t.id === id)!, ...patch };
+        const prev = todos.find((t) => t.id === id)!;
+        const updated: Todo = { ...prev, ...patch };
+        // 与后端一致：勾上记「现在」，取消勾选清空
+        if (patch.completed !== undefined && patch.completed !== prev.completed) {
+          updated.completedAt = patch.completed ? Date.now() : null;
+        }
         todos = todos.map((t) => (t.id === id ? updated : t));
         return updated;
       },
@@ -211,6 +216,47 @@ test("筛选功能", async () => {
   await user.click(screen.getByRole("button", { name: "已完成" }));
   expect(screen.getByText("已完成的任务")).toBeInTheDocument();
   expect(screen.queryByText("进行中的任务")).not.toBeInTheDocument();
+});
+
+test("昨天以前完成的默认不再显示，切到已完成才看得到", async () => {
+  const user = userEvent.setup();
+  // 有 token 才会在挂载时拉列表，否则 seed 的数据根本不会进 state
+  localStorage.setItem("todo-token", "t");
+  const now = Date.now();
+  __seed(
+    [
+      { id: "t1", text: "还在做的事", completed: false, parentId: null },
+      {
+        id: "t2",
+        text: "今天完成的",
+        completed: true,
+        parentId: null,
+        completedAt: now,
+      },
+      {
+        id: "t3",
+        text: "昨天完成的",
+        completed: true,
+        parentId: null,
+        completedAt: now - 24 * 3600 * 1000,
+      },
+      // 老数据：本功能上线前就完成，completedAt 为 null —— 按很久以前完成处理
+      { id: "t4", text: "很久以前完成的", completed: true, parentId: null },
+    ],
+    [],
+  );
+  renderTodoList();
+
+  expect(await screen.findByText("还在做的事")).toBeInTheDocument();
+  expect(screen.getByText("今天完成的")).toBeInTheDocument();
+  expect(screen.queryByText("昨天完成的")).not.toBeInTheDocument();
+  expect(screen.queryByText("很久以前完成的")).not.toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "已完成" }));
+  expect(screen.getByText("今天完成的")).toBeInTheDocument();
+  expect(screen.getByText("昨天完成的")).toBeInTheDocument();
+  expect(screen.getByText("很久以前完成的")).toBeInTheDocument();
+  expect(screen.queryByText("还在做的事")).not.toBeInTheDocument();
 });
 
 test("清除已完成", async () => {

@@ -64,6 +64,15 @@ public class Todo {
     @Column
     private Long budgetNotifiedAt;
 
+    /**
+     * 勾上「完成」的时间戳（毫秒）；取消勾选清空，从没完成过为 null。
+     *
+     * <p>前端用它实现「完成后当天还留在列表里，第二天起不再占位置」。老数据里已完成的
+     * 这一列是 null —— 按「很久以前完成」处理，直接归入历史。
+     */
+    @Column
+    private Long completedAt;
+
     @Column(nullable = false, updatable = false)
     private Long createdAt;
 
@@ -105,6 +114,8 @@ public class Todo {
     public void setPlanDate(String planDate) { this.planDate = planDate; }
     public Long getBudgetNotifiedAt() { return budgetNotifiedAt; }
     public void setBudgetNotifiedAt(Long budgetNotifiedAt) { this.budgetNotifiedAt = budgetNotifiedAt; }
+    public Long getCompletedAt() { return completedAt; }
+    public void setCompletedAt(Long completedAt) { this.completedAt = completedAt; }
     public Long getCreatedAt() { return createdAt; }
     public void setCreatedAt(Long createdAt) { this.createdAt = createdAt; }
     public Long getUpdatedAt() { return updatedAt; }
