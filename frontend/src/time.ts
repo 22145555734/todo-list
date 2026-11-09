@@ -171,6 +171,55 @@ export function formatHms(ms: number): string {
   return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
+/** 时间戳格式化为 HH:mm（本地时区），用于时间明细表 */
+export function formatClock(ts: number): string {
+  const d = new Date(ts);
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+export interface DayGroup {
+  /** 日期键，形如 2026-11-08 */
+  key: string;
+  /** 当天会话，按开始时间升序 */
+  sessions: TimeSession[];
+  /** 当天总时长（毫秒，进行中的按 now 计） */
+  totalMs: number;
+}
+
+/**
+ * 把 [startKey, endKey] 范围内的会话按开始日期分组，供时间明细表使用。
+ *
+ * 归属规则与 buildStats 一致：按会话的**开始时刻**归入当天，跨午夜的会话不拆分。
+ * 返回日期倒序（最新在前），每组内按开始时间升序。
+ */
+export function groupSessionsByDay(
+  sessions: TimeSession[],
+  now: number,
+  startKey: string,
+  endKey: string,
+): DayGroup[] {
+  const from = parseKey(startKey).getTime();
+  const to = parseKey(endKey).getTime() + DAY_MS;
+  const map = new Map<string, TimeSession[]>();
+  for (const s of sessions) {
+    if (s.start < from || s.start >= to) continue;
+    const k = dateKey(s.start);
+    const list = map.get(k);
+    if (list) list.push(s);
+    else map.set(k, [s]);
+  }
+  return Array.from(map.entries())
+    .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+    .map(([key, list]) => ({
+      key,
+      sessions: list.sort((a, b) => a.start - b.start),
+      totalMs: list.reduce(
+        (sum, s) => sum + Math.max(0, (s.end ?? now) - s.start),
+        0,
+      ),
+    }));
+}
+
 /** 时长格式化为简短中文，用于统计数字与表格 */
 export function formatShort(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));

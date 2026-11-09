@@ -4,7 +4,9 @@ import { useNow } from "./useNow";
 import {
   buildStats,
   dateKey,
+  formatClock,
   formatShort,
+  groupSessionsByDay,
   parseKey,
   DAY_MS,
   type BucketStat,
@@ -95,6 +97,8 @@ export default function Stats() {
     x: number;
     y: number;
   } | null>(null);
+  /** 时间明细里展开的日期；null 表示默认展开最新一天，"" 表示全部收起 */
+  const [openDay, setOpenDay] = useState<string | null>(null);
   const { ref: containerRef, width } = useWidth<HTMLDivElement>();
 
   const now = useNow(runningTodoId !== null);
@@ -146,6 +150,13 @@ export default function Stats() {
       for (const k of Object.keys(b.perSubject)) set.add(k);
     return Array.from(set).sort();
   }, [buckets]);
+
+  // —— 时间明细：按天分组，默认展开最新一天 ——
+  const dayGroups = useMemo(
+    () => groupSessionsByDay(sessions, now, startKey, endKey),
+    [sessions, now, startKey, endKey],
+  );
+  const activeDay = openDay ?? dayGroups[0]?.key ?? null;
 
   // 科目名 -> 颜色槽。超过 8 个科目折叠为“其他”，保持颜色稳定（颜色跟随实体而非排名）
   const colorOf = (name: string): string => {
@@ -567,6 +578,71 @@ export default function Stats() {
               </tbody>
             </table>
           </div>
+
+          {/* 时间明细：按天分组，点日期展开 */}
+          {dayGroups.length > 0 && (
+            <div className="mt-6">
+              <h2 className="mb-2 text-base font-semibold text-gray-800">
+                时间明细
+              </h2>
+              <div className="space-y-1">
+                {dayGroups.map((g) => {
+                  const open = g.key === activeDay;
+                  return (
+                    <div
+                      key={g.key}
+                      className="overflow-hidden rounded-lg border border-gray-200"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setOpenDay(open ? "" : g.key)}
+                        aria-expanded={open}
+                        className="flex w-full items-center justify-between gap-2 bg-gray-50 px-3 py-2 text-sm transition hover:bg-gray-100"
+                      >
+                        <span className="font-medium text-gray-700">
+                          {g.key}
+                        </span>
+                        <span className="tabular-nums text-xs text-gray-400">
+                          {g.sessions.length} 段 · {formatShort(g.totalMs)}
+                        </span>
+                      </button>
+                      {open && (
+                        <ul className="divide-y divide-gray-100 px-3">
+                          {g.sessions.map((s) => {
+                            const end = s.end ?? now;
+                            const crossDay =
+                              s.end !== null &&
+                              dateKey(s.end) !== dateKey(s.start);
+                            return (
+                              <li
+                                key={s.id}
+                                className="flex items-baseline gap-2 py-1.5 text-sm"
+                              >
+                                <span className="shrink-0 tabular-nums text-gray-500">
+                                  {formatClock(s.start)}–
+                                  {s.end === null
+                                    ? "进行中"
+                                    : crossDay
+                                      ? `次日 ${formatClock(s.end)}`
+                                      : formatClock(s.end)}
+                                </span>
+                                <span className="min-w-0 flex-1 truncate text-gray-700">
+                                  {s.subject}
+                                </span>
+                                <span className="shrink-0 tabular-nums text-xs text-gray-400">
+                                  {formatShort(end - s.start)}
+                                </span>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </>
       )}
 
