@@ -1,4 +1,4 @@
-import { formatClock, groupSessionsByDay } from "./time";
+import { formatClock, groupSessionsByDay, studyDayKey } from "./time";
 import type { TimeSession } from "./types";
 
 /** 本地时间构造时间戳，避免测试受时区影响 */
@@ -78,5 +78,15 @@ describe("groupSessionsByDay", () => {
 
   test("没有会话时返回空数组", () => {
     expect(groupSessionsByDay([], now, "2026-11-08", "2026-11-08")).toEqual([]);
+  });
+});
+
+describe("studyDayKey", () => {
+  test("凌晨 4 点前算前一天，4 点起算新的一天", () => {
+    expect(studyDayKey(at(9, 23, 59))).toBe("2026-11-09");
+    expect(studyDayKey(at(10, 0, 0))).toBe("2026-11-09");
+    expect(studyDayKey(at(10, 3, 59))).toBe("2026-11-09");
+    expect(studyDayKey(at(10, 4, 0))).toBe("2026-11-10");
+    expect(studyDayKey(at(10, 12, 0))).toBe("2026-11-10");
   });
 });

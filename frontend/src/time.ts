@@ -12,6 +12,19 @@ export function dateKey(ts: number): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/**
+ * 学习日从凌晨 4 点起算：0–4 点之间仍归前一天。
+ *
+ * 凌晨两点还在学的那一段不该被零点切走 —— 它属于「昨晚」那天的任务和预算。
+ * 只用于每日计划相关的换天判断（完成归档、同步脚本取日期）；统计页的分桶仍按自然日。
+ */
+export const STUDY_DAY_START_HOUR = 4;
+
+/** 学习日 key（yyyy-MM-dd），以凌晨 4 点为界 */
+export function studyDayKey(ts: number): string {
+  return dateKey(ts - STUDY_DAY_START_HOUR * 60 * 60 * 1000);
+}
+
 /** 解析 yyyy-mm-dd 为本地零点 Date */
 export function parseKey(key: string): Date {
   const [y, m, d] = key.split("-").map(Number);

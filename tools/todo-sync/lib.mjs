@@ -93,3 +93,11 @@ export function dateKey(ts) {
   const p = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
+
+/** 学习日的起点：凌晨 4 点。0–4 点仍算前一天，凌晨学的时长归前一晚 */
+export const STUDY_DAY_START_HOUR = 4;
+
+/** 学习日日期键，和前端 `studyDayKey` 同一口径 */
+export function studyDateKey(ts) {
+  return dateKey(ts - STUDY_DAY_START_HOUR * 60 * 60 * 1000);
+}

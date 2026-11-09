@@ -31,7 +31,7 @@ import {
 } from "@dnd-kit/sortable";
 import { useStore } from "./store";
 import { useNow } from "./useNow";
-import { dateKey, formatHms, formatShort } from "./time";
+import { formatHms, formatShort, studyDayKey } from "./time";
 import { getLevelInfo, levelFont, levelShimmer } from "./level";
 import { siblingIds } from "./reorder";
 import type { Todo } from "./types";
@@ -775,12 +775,13 @@ export default function TodoList() {
 
   // 完成的任务只在「勾掉的那一天」还留在列表里，第二天起不再占位置。
   // completedAt 为 null 的是本功能上线前就完成的老数据 —— 按「早就完成了」处理，直接归历史。
+  // 换天按**学习日**算（凌晨 4 点起），和每日计划的刷新口径一致。
   //
   // 只影响显示：任务、计时记录都不删，切到「已完成」照样看得到。
-  const todayKey = dateKey(Date.now());
+  const todayKey = studyDayKey(Date.now());
   const isArchived = (t: Todo) =>
     t.completed &&
-    (t.completedAt == null || dateKey(t.completedAt) !== todayKey);
+    (t.completedAt == null || studyDayKey(t.completedAt) !== todayKey);
 
   const keep = (t: Todo) => {
     switch (filter) {
