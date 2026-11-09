@@ -607,7 +607,7 @@ export default function Stats() {
                         </span>
                       </button>
                       {open && (
-                        <ul className="divide-y divide-gray-100 px-3">
+                        <ul className="px-3">
                           {g.sessions.map((s) => {
                             const end = s.end ?? now;
                             const crossDay =
@@ -616,9 +616,9 @@ export default function Stats() {
                             return (
                               <li
                                 key={s.id}
-                                className="flex items-baseline gap-2 py-1.5 text-sm"
+                                className="relative flex items-baseline gap-2 py-1.5 pl-6 text-sm before:absolute before:-bottom-1.5 before:left-2 before:top-2 before:w-0.5 before:bg-gray-200 before:content-[''] last:before:bottom-1/2 after:absolute after:left-1 after:top-[9px] after:h-2.5 after:w-2.5 after:rounded-full after:border-2 after:border-white after:bg-blue-500 after:content-[''] after:shadow-[0_0_0_1px_#bfdbfe]"
                               >
-                                <span className="shrink-0 tabular-nums text-gray-500">
+                                <span className="shrink-0 font-semibold tabular-nums text-gray-800">
                                   {formatClock(s.start)}–
                                   {s.end === null
                                     ? "进行中"
