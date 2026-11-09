@@ -31,7 +31,7 @@ import {
 } from "@dnd-kit/sortable";
 import { useStore } from "./store";
 import { useNow } from "./useNow";
-import { formatHms, formatShort } from "./time";
+import { dateKey, formatHms, formatShort } from "./time";
 import { getLevelInfo, levelFont, levelShimmer } from "./level";
 import { siblingIds } from "./reorder";
 import type { Todo } from "./types";
@@ -48,8 +48,10 @@ interface TodoItemProps {
   todo: Todo;
   /** 本项自身正在计时 */
   running: boolean;
-  /** 子任务数量，> 0 表示为合集（自身不再计时） */
+  /** 子任务总数，> 0 表示为合集（自身不再计时） */
   childCount: number;
+  /** 当前筛选下真正会显示出来的子任务数（已完成的昨天以前的会被隐藏） */
+  visibleChildCount: number;
   /** 合集中正在计时的子任务名，无则为 null */
   childRunningName: string | null;
   elapsedMs: (todoId: string, now: number) => number;
@@ -154,6 +156,7 @@ const TodoItem = memo(function TodoItem({
   todo,
   running,
   childCount,
+  visibleChildCount,
   childRunningName,
   elapsedMs,
   budgetSpentMs,
@@ -331,7 +334,9 @@ const TodoItem = memo(function TodoItem({
             <span className="truncate text-xs text-gray-500">
               {childRunningName
                 ? `正在计时：${childRunningName}`
-                : `${childCount} 个子任务`}
+                : visibleChildCount > 0
+                  ? `${visibleChildCount} 个子任务`
+                  : `已完成 ${childCount} 项`}
             </span>
           )}
         </div>
@@ -362,8 +367,9 @@ const TodoItem = memo(function TodoItem({
           >
             + 子任务
           </button>
-          {/* 子任务多起来会把列表撑得很长，留给用户一个收起来的开关 */}
-          {isContainer && (
+          {/* 子任务多起来会把列表撑得很长，留给用户一个收起来的开关。
+              全被归档筛掉了就没有可收的东西，按钮跟着消失 */}
+          {isContainer && visibleChildCount > 0 && (
             <button
               onClick={() => onToggleCollapse(todo.id)}
               aria-expanded={!collapsed}
@@ -767,6 +773,26 @@ export default function TodoList() {
   // 已收起的合集 id。默认全展开——加子任务本就是为了给它们计时，不该被折叠挡住
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
 
+  // 完成的任务只在「勾掉的那一天」还留在列表里，第二天起不再占位置。
+  // completedAt 为 null 的是本功能上线前就完成的老数据 —— 按「早就完成了」处理，直接归历史。
+  //
+  // 只影响显示：任务、计时记录都不删，切到「已完成」照样看得到。
+  const todayKey = dateKey(Date.now());
+  const isArchived = (t: Todo) =>
+    t.completed &&
+    (t.completedAt == null || dateKey(t.completedAt) !== todayKey);
+
+  const keep = (t: Todo) => {
+    switch (filter) {
+      case "active":
+        return !t.completed;
+      case "completed":
+        return t.completed;
+      default:
+        return !isArchived(t);
+    }
+  };
+
   const submit = (e: FormEvent) => {
     e.preventDefault();
     addTodo(input);
@@ -903,7 +929,8 @@ export default function TodoList() {
   );
 
   const activeTodo = activeId ? todos.find((t) => t.id === activeId) ?? null : null;
-  const overlayChildren = activeTodo ? childrenOf(activeTodo.id) : [];
+  // 拖拽预览里也只画当前筛选下看得见的子任务，避免把已归档的又带出来
+  const overlayChildren = activeTodo ? childrenOf(activeTodo.id).filter(keep) : [];
 
   /**
    * 拖的是**主任务** —— 这时候整个列表的合集一起收起（不只是被拖那一个），
@@ -921,16 +948,7 @@ export default function TodoList() {
 
   const roots = useMemo(() => todos.filter((t) => t.parentId === null), [todos]);
 
-  const visibleTodos = useMemo(() => {
-    switch (filter) {
-      case "active":
-        return roots.filter((t) => !t.completed);
-      case "completed":
-        return roots.filter((t) => t.completed);
-      default:
-        return roots;
-    }
-  }, [roots, filter]);
+  const visibleTodos = roots.filter(keep);
 
   const remaining = roots.filter((t) => !t.completed).length;
 
@@ -952,6 +970,7 @@ export default function TodoList() {
         todo={todo}
         running={runningTodoId === todo.id}
         childCount={children.length}
+        visibleChildCount={children.filter(keep).length}
         childRunningName={runningDescendantName(todo.id)}
         elapsedMs={elapsedMs}
         budgetSpentMs={budgetSpentMs}
@@ -977,7 +996,8 @@ export default function TodoList() {
    * 所以任意深度都能在同一层内拖拽，跨层仍然被 collisionDetection 挡住。
    */
   const renderNode = (todo: Todo, depth: number): ReactNode => {
-    const children = childrenOf(todo.id);
+    // 归档的（昨天以前完成的）不渲染 —— 但合集判定仍按全部子任务，见 renderCard 的 childCount
+    const children = childrenOf(todo.id).filter(keep);
     return (
       <SortableRow
         key={todo.id}

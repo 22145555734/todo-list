@@ -104,8 +104,11 @@ public class TodoService {
             }
             todo.setText(text);
         }
-        if (req.completed() != null) {
+        // 完成时刻只在这两种翻转时写：勾上记「现在」，取消勾选清空。
+        // 前端靠它决定「今天刚勾掉的还留在列表里，昨天以前的不再占位置」。
+        if (req.completed() != null && req.completed() != todo.isCompleted()) {
             todo.setCompleted(req.completed());
+            todo.setCompletedAt(req.completed() ? System.currentTimeMillis() : null);
         }
         // 预算或归属日变了就是新的一轮，提醒标记要清掉，否则新预算用完了也不会再提醒
         if (req.plannedMs() != null && !req.plannedMs().equals(todo.getPlannedMs())) {
@@ -200,6 +203,6 @@ public class TodoService {
     private TodoDto toDto(Todo t) {
         return new TodoDto(
                 t.getId(), t.getText(), t.isCompleted(), t.getParentId(),
-                t.getPlannedMs(), t.getPlanDate());
+                t.getPlannedMs(), t.getPlanDate(), t.getCompletedAt());
     }
 }
