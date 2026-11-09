@@ -9,6 +9,7 @@ import com.todo.todo.dto.TodoUpdateRequest;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -45,17 +46,15 @@ public class TodoService {
         Long uid = Auths.userId();
         String parentId = req.parentId();
         if (parentId != null) {
-            Todo parent = owned(parentId);
-            if (parent.getParentId() != null) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "子任务下不能再加子任务");
-            }
-            // 合集由子任务分别计时，本身不再计时：结束它仍在进行的会话（保留历史）
+            // 任意深度都允许；只校验父事项存在且属于当前用户
+            owned(parentId);
+            // 有了子事项就不再自己计时：结束它仍在进行的会话（保留历史）
             endRunning(uid, parentId);
         }
         long now = System.currentTimeMillis();
         Todo todo = new Todo(
                 UUID.randomUUID().toString(), uid, text, parentId, nextSortOrder(uid, parentId),
-                false, now, now);
+                false, req.plannedMs(), req.planDate(), now, now);
         return toDto(todoRepository.save(todo));
     }
 
@@ -108,6 +107,15 @@ public class TodoService {
         if (req.completed() != null) {
             todo.setCompleted(req.completed());
         }
+        // 预算或归属日变了就是新的一轮，提醒标记要清掉，否则新预算用完了也不会再提醒
+        if (req.plannedMs() != null && !req.plannedMs().equals(todo.getPlannedMs())) {
+            todo.setPlannedMs(req.plannedMs());
+            todo.setBudgetNotifiedAt(null);
+        }
+        if (req.planDate() != null && !req.planDate().equals(todo.getPlanDate())) {
+            todo.setPlanDate(req.planDate());
+            todo.setBudgetNotifiedAt(null);
+        }
         todo.setUpdatedAt(System.currentTimeMillis());
         return toDto(todoRepository.save(todo));
     }
@@ -115,16 +123,20 @@ public class TodoService {
     @Transactional
     public void delete(String id) {
         Long uid = Auths.userId();
-        Todo todo = todoRepository.findById(id)
+        todoRepository.findById(id)
                 .filter(t -> t.getUserId().equals(uid))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "事项不存在"));
-        // 合集连同子任务一起删除；计时记录照旧保留，用于统计
+        // 连同整棵子树一起删除；计时记录照旧保留，用于统计
+        deleteSubtree(uid, id);
+    }
+
+    /** 自底向上删除，任意深度。计时记录不删，历史统计照常。 */
+    private void deleteSubtree(Long uid, String id) {
         for (Todo child : todoRepository.findByUserIdAndParentId(uid, id)) {
-            endRunning(uid, child.getId());
-            todoRepository.delete(child);
+            deleteSubtree(uid, child.getId());
         }
         endRunning(uid, id);
-        todoRepository.delete(todo);
+        todoRepository.deleteById(id);
     }
 
     @Transactional
@@ -133,12 +145,25 @@ public class TodoService {
         List<Todo> all = todoRepository.findByUserIdOrderBySortOrderAscCreatedAtAsc(uid);
         Set<String> completedIds =
                 all.stream().filter(Todo::isCompleted).map(Todo::getId).collect(Collectors.toSet());
+        Map<String, String> parentOf = all.stream()
+                .filter(t -> t.getParentId() != null)
+                .collect(Collectors.toMap(Todo::getId, Todo::getParentId));
         for (Todo t : all) {
             if (!t.isCompleted()) continue;
-            // 合集已完成时其子任务会被一并删除，跳过以免重复删除
-            if (t.getParentId() != null && completedIds.contains(t.getParentId())) continue;
+            // 祖先里已有完成项的，会随祖先的删除一起被清掉，跳过以免重复删除
+            if (hasCompletedAncestor(t.getId(), completedIds, parentOf)) continue;
             delete(t.getId());
         }
+    }
+
+    private boolean hasCompletedAncestor(
+            String id, Set<String> completedIds, Map<String, String> parentOf) {
+        String p = parentOf.get(id);
+        while (p != null) {
+            if (completedIds.contains(p)) return true;
+            p = parentOf.get(p);
+        }
+        return false;
     }
 
     /**
@@ -173,6 +198,8 @@ public class TodoService {
     }
 
     private TodoDto toDto(Todo t) {
-        return new TodoDto(t.getId(), t.getText(), t.isCompleted(), t.getParentId());
+        return new TodoDto(
+                t.getId(), t.getText(), t.isCompleted(), t.getParentId(),
+                t.getPlannedMs(), t.getPlanDate());
     }
 }

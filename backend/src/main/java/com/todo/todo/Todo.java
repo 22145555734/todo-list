@@ -19,7 +19,12 @@ public class Todo {
     @Column(nullable = false, length = 500)
     private String text;
 
-    /** 所属合集 id；null 表示顶层事项。只允许一层嵌套，故有 parentId 的事项本身不能再当合集。 */
+    /**
+     * 所属父事项 id；null 表示顶层。
+     *
+     * <p>允许任意深度嵌套（如 408 → 数据结构 → W01 → 任务）。**只有没有子事项的叶子可以计时**，
+     * 这一点由 {@link com.todo.session.TimeSessionService} 把关。
+     */
     @Column(length = 36)
     private String parentId;
 
@@ -36,6 +41,29 @@ public class Todo {
     @Column(nullable = false)
     private boolean completed;
 
+    /**
+     * 计划时长（毫秒）；null 表示没有预算，计时走正计时。
+     *
+     * <p>有值时前端按倒计时显示，到 0 停表等用户确认。开始计时那一刻会把它快照进
+     * time_sessions，之后改这里不会污染历史统计。
+     */
+    @Column
+    private Long plannedMs;
+
+    /** 这条任务属于哪一天（yyyy-MM-dd）；null 表示不带日期的老数据。 */
+    @Column(length = 10)
+    private String planDate;
+
+    /**
+     * 本次预算用尽时提醒过一次的时间戳（毫秒）；null 表示还没提醒。
+     *
+     * <p>用来防重复：预算被用完这件事，可能由前端到点停表发现，也可能由后端定时扫描发现，
+     * 靠这个字段保证一个预算周期只发一条。改预算或换 {@code planDate} 时由
+     * {@link TodoService#update} 清空 —— 那是新的一轮。
+     */
+    @Column
+    private Long budgetNotifiedAt;
+
     @Column(nullable = false, updatable = false)
     private Long createdAt;
 
@@ -46,13 +74,15 @@ public class Todo {
 
     public Todo(
             String id, Long userId, String text, String parentId, Integer sortOrder,
-            boolean completed, Long createdAt, Long updatedAt) {
+            boolean completed, Long plannedMs, String planDate, Long createdAt, Long updatedAt) {
         this.id = id;
         this.userId = userId;
         this.text = text;
         this.parentId = parentId;
         this.sortOrder = sortOrder;
         this.completed = completed;
+        this.plannedMs = plannedMs;
+        this.planDate = planDate;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
     }
@@ -69,6 +99,12 @@ public class Todo {
     public void setSortOrder(Integer sortOrder) { this.sortOrder = sortOrder; }
     public boolean isCompleted() { return completed; }
     public void setCompleted(boolean completed) { this.completed = completed; }
+    public Long getPlannedMs() { return plannedMs; }
+    public void setPlannedMs(Long plannedMs) { this.plannedMs = plannedMs; }
+    public String getPlanDate() { return planDate; }
+    public void setPlanDate(String planDate) { this.planDate = planDate; }
+    public Long getBudgetNotifiedAt() { return budgetNotifiedAt; }
+    public void setBudgetNotifiedAt(Long budgetNotifiedAt) { this.budgetNotifiedAt = budgetNotifiedAt; }
     public Long getCreatedAt() { return createdAt; }
     public void setCreatedAt(Long createdAt) { this.createdAt = createdAt; }
     public Long getUpdatedAt() { return updatedAt; }

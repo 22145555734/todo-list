@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -36,8 +37,14 @@ interface StoreValue {
   clearCompleted: () => Promise<void>;
   toggleTimer: (todoId: string) => Promise<void>;
   adoptTime: (containerId: string, targetId: string) => Promise<void>;
-  /** 累计时长：合集为其自身记录与全部子任务之和 */
+  /** 累计时长：合集为其自身记录与整棵子树之和 */
   elapsedMs: (todoId: string, now: number) => number;
+  /** 本项在当前预算周期内的已用时长（按 planDate 过滤；无 planDate 则累计这条任务的全部） */
+  budgetSpentMs: (todo: Todo, now: number) => number;
+  /** 到点停表：把进行中的会话结束在「预算正好用完」那一刻，而不是现在 */
+  finishBudget: (todo: Todo) => Promise<void>;
+  /** 设定预算（分钟）；传 null 表示清除 */
+  setBudget: (id: string, minutes: number | null) => Promise<void>;
 }
 
 const NO_CHILDREN: Todo[] = [];
@@ -151,6 +158,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (s.end !== null) {
         m.set(s.todoId, (m.get(s.todoId) ?? 0) + (s.end - s.start));
       }
+    }
+    return m;
+  }, [sessions]);
+
+  // 同一 (事项, 归属日) 下已结束会话的总时长 —— 预算按天结算，不能把昨天的算进来
+  const completedMsByTodoPlan = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const s of sessions) {
+      if (s.end === null) continue;
+      const key = `${s.todoId}|${s.planDate ?? ""}`;
+      m.set(key, (m.get(key) ?? 0) + (s.end - s.start));
     }
     return m;
   }, [sessions]);
@@ -298,16 +316,72 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [refreshSessions, handleError],
   );
 
-  // 合集的总时长 = 自身残留记录 + 各子任务之和
+  // 合集的总时长 = 自身残留记录 + 整棵子树之和。
+  //
+  // 递归得走 ref：useCallback 里函数还没有自己的名字可用；而如果每次渲染新建一个函数，
+  // 传给 memo 过的 TodoItem 的 props 每秒都变，整个列表会跟着秒级重渲染。
+  // 所以对外始终暴露同一个函数，内部再指向当下这份实现。
+  const elapsedRef = useRef<(todoId: string, now: number) => number>(() => 0);
+  elapsedRef.current = (todoId, now) => {
+    let total = ownMs(todoId, now);
+    for (const c of childrenByParent.get(todoId) ?? NO_CHILDREN) {
+      total += elapsedRef.current(c.id, now);
+    }
+    return total;
+  };
   const elapsedMs = useCallback(
-    (todoId: string, now: number) => {
-      let total = ownMs(todoId, now);
-      for (const c of childrenByParent.get(todoId) ?? NO_CHILDREN) {
-        total += ownMs(c.id, now);
+    (todoId: string, now: number) => elapsedRef.current(todoId, now),
+    [],
+  );
+
+  const budgetSpentMs = useCallback(
+    (todo: Todo, now: number) => {
+      let total = completedMsByTodoPlan.get(`${todo.id}|${todo.planDate ?? ""}`) ?? 0;
+      if (
+        runningSession &&
+        runningSession.todoId === todo.id &&
+        (runningSession.planDate ?? "") === (todo.planDate ?? "")
+      ) {
+        total += now - runningSession.start;
       }
       return total;
     },
-    [ownMs, childrenByParent],
+    [completedMsByTodoPlan, runningSession],
+  );
+
+  // 结束在「预算正好用完」的那一刻，而不是点下去的那一刻 —— 否则扫描/渲染的一两秒误差
+  // 会天天累积，统计和预算对不上
+  const finishBudget = useCallback(
+    async (todo: Todo) => {
+      const planned = todo.plannedMs ?? 0;
+      const rs = sessions.find((s) => s.end === null && s.todoId === todo.id);
+      if (!rs || planned <= 0) return;
+      setError(null);
+      try {
+        // now 传 rs.start，让「进行中那一段」贡献 0，只累计此前已结束的会话
+        const before = budgetSpentMs(todo, rs.start);
+        const end = Math.min(Date.now(), rs.start + Math.max(0, planned - before));
+        await api.pauseTimer(todo.id, end);
+        await refreshSessions();
+      } catch (e) {
+        handleError(e);
+      }
+    },
+    [sessions, budgetSpentMs, refreshSessions, handleError],
+  );
+
+  const setBudget = useCallback(
+    async (id: string, minutes: number | null) => {
+      setError(null);
+      try {
+        // 0 当作「没有预算」：后端把 null 理解为「这个字段不改」，无法用它来清除
+        const updated = await api.updateTodo(id, { plannedMs: Math.max(0, minutes ?? 0) * 60000 });
+        setTodos((prev) => prev.map((x) => (x.id === id ? updated : x)));
+      } catch (e) {
+        handleError(e);
+      }
+    },
+    [handleError],
   );
 
   const value: StoreValue = {
@@ -333,6 +407,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     toggleTimer,
     adoptTime,
     elapsedMs,
+    budgetSpentMs,
+    finishBudget,
+    setBudget,
   };
 
   return (

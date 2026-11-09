@@ -31,6 +31,22 @@ public class TimeSession {
     @Column(length = 500)
     private String rootSubject;
 
+    /**
+     * 开始计时时快照的完整祖先链，从根到叶子，用全角 {@code ｜} 分隔
+     * （{@code 408｜数据结构｜W01｜第1章 绪论}）。层级统计按它归并。
+     *
+     * <p>用全角竖线而非 {@code /}：事项名里本来就可能有斜杠。
+     */
+    @Column(length = 2000)
+    private String path;
+
+    /** 开始计时时快照的计划时长（毫秒）；null 表示该任务没有预算。 */
+    private Long plannedMs;
+
+    /** 开始计时时快照的任务归属日（yyyy-MM-dd）。 */
+    @Column(length = 10)
+    private String planDate;
+
     /** 开始时间戳（毫秒）。 */
     @Column(nullable = false)
     private long start;
@@ -42,12 +58,15 @@ public class TimeSession {
 
     public TimeSession(
             String id, Long userId, String todoId, String subject, String rootSubject,
-            long start, Long end) {
+            String path, Long plannedMs, String planDate, long start, Long end) {
         this.id = id;
         this.userId = userId;
         this.todoId = todoId;
         this.subject = subject;
         this.rootSubject = rootSubject;
+        this.path = path;
+        this.plannedMs = plannedMs;
+        this.planDate = planDate;
         this.start = start;
         this.end = end;
     }
@@ -62,6 +81,12 @@ public class TimeSession {
     public void setSubject(String subject) { this.subject = subject; }
     public String getRootSubject() { return rootSubject; }
     public void setRootSubject(String rootSubject) { this.rootSubject = rootSubject; }
+    public String getPath() { return path; }
+    public void setPath(String path) { this.path = path; }
+    public Long getPlannedMs() { return plannedMs; }
+    public void setPlannedMs(Long plannedMs) { this.plannedMs = plannedMs; }
+    public String getPlanDate() { return planDate; }
+    public void setPlanDate(String planDate) { this.planDate = planDate; }
     public long getStart() { return start; }
     public void setStart(long start) { this.start = start; }
     public Long getEnd() { return end; }

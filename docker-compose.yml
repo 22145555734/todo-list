@@ -41,6 +41,13 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:-604800000}
       JAVA_TOOL_OPTIONS: -Xms128m -Xmx256m -XX:MaxMetaspaceSize=128m
+      # 预算到点提醒：往 QQ 机器人的文件队列里写一条消息。chatKey 只写在服务器 .env，
+      # 这里是公开仓库，不落具体会话。
+      QQ_NOTIFY_INBOX: /var/lib/qq-notify/inbox
+      QQ_NOTIFY_CHAT_KEY: ${QQ_NOTIFY_CHAT_KEY:-}
+    volumes:
+      # 机器人是宿主机进程，只监听回环；容器够不到它，于是共用这个目录投递
+      - /var/lib/qq-notify/inbox:/var/lib/qq-notify/inbox
     networks:
       - todo-net
 

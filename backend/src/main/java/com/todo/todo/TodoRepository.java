@@ -18,4 +18,7 @@ public interface TodoRepository extends JpaRepository<Todo, String> {
     List<Todo> findBySortOrderIsNull();
 
     boolean existsByUserIdAndParentId(Long userId, String parentId);
+
+    /** 有预算的事项（预算到点提醒的扫描范围，量级很小） */
+    List<Todo> findByPlannedMsIsNotNull();
 }

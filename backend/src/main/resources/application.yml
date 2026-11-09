@@ -16,6 +16,13 @@ spring:
         dialect: org.hibernate.dialect.MySQLDialect
 
 app:
+  notify:
+    # QQ 机器人的文件投递目录与目标会话。两者任一为空 = 关闭提醒（只停表、不发消息）。
+    # 目录不存在时启动不报错，但发送失败会打 warning。
+    inbox: ${QQ_NOTIFY_INBOX:}
+    chat-key: ${QQ_NOTIFY_CHAT_KEY:}
+    # 预算到点扫描间隔
+    sweep-ms: ${NOTIFY_SWEEP_MS:10000}
   jwt:
     # 不设默认值：公开仓库里的兜底 JWT 密钥可被用来伪造任意用户的令牌。
     # 缺失时启动即失败（fail-closed），这是刻意的。
