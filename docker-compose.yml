@@ -48,6 +48,8 @@ services:
       # 每日计划同步：文件从宿主机只读挂载；账号名只写在服务器 .env
       PLAN_FILE: /var/lib/todo-plan/plan_days.json
       PLAN_SYNC_USERNAME: ${PLAN_SYNC_USERNAME:-}
+      # 默认每天 04:00（东八区）。临时想提前跑一次做验证时改它。
+      PLAN_SYNC_CRON: "${PLAN_SYNC_CRON:-0 0 4 * * *}"
     volumes:
       # 机器人是宿主机进程，只监听回环；容器够不到它，于是共用这个目录投递
       - /var/lib/qq-notify/inbox:/var/lib/qq-notify/inbox
