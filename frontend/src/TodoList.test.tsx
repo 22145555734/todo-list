@@ -653,6 +653,42 @@ test("预算到点自动停表：结束在预算用完那一刻，停在待确�
   expect(screen.getByRole("button", { name: "继续学" })).toBeInTheDocument();
 });
 
+test("待确认时点「确认完成」按钮即可完成", async () => {
+  const user = userEvent.setup();
+  localStorage.setItem("todo-token", "test-token");
+  __seed(
+    [
+      {
+        id: "t",
+        text: "高数",
+        completed: false,
+        parentId: null,
+        plannedMs: 3600000,
+        planDate: "2026-11-09",
+      },
+    ],
+    [
+      {
+        id: "s",
+        todoId: "t",
+        subject: "高数",
+        rootSubject: null,
+        planDate: "2026-11-09",
+        plannedMs: 3600000,
+        start: Date.now() - 7200000,
+        end: Date.now() - 3600000,
+      },
+    ],
+  );
+  renderTodoList();
+
+  expect(await screen.findByText("待确认")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "确认完成" }));
+
+  await waitFor(() => expect(api.updateTodo).toHaveBeenCalledWith("t", { completed: true }));
+  await waitFor(() => expect(screen.getByText("高数")).toHaveClass("line-through"));
+});
+
 test("待确认的任务点勾选才算完成", async () => {
   const user = userEvent.setup();
   localStorage.setItem("todo-token", "test-token"); // 有 token 才会去拉数据
