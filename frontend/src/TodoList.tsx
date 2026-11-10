@@ -310,6 +310,16 @@ const TodoItem = memo(function TodoItem({
                     : "待确认"
                   : `剩余 ${formatHms(remaining)}`}
               </span>
+              {/* 预算用完后停在待确认，给一个明确的完成入口 —— 勾选框也算，但没标签，
+                  用户找不到「确认」在哪 */}
+              {exhausted && !running && (
+                <button
+                  onClick={() => onToggle(todo.id)}
+                  className="shrink-0 rounded-md bg-green-500 px-2 py-0.5 text-xs font-medium text-white transition hover:bg-green-600 active:bg-green-700"
+                >
+                  确认完成
+                </button>
+              )}
               {/* 预算总量在旁边的「预算 xx分」里已经有了，这里只说用掉多少，别重复占宽度 */}
               <span className="whitespace-nowrap text-xs tabular-nums text-gray-400">
                 已用 {formatShort(spent)}
