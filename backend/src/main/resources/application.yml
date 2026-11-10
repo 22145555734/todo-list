@@ -16,6 +16,14 @@ spring:
         dialect: org.hibernate.dialect.MySQLDialect
 
 app:
+  plan:
+    # 每日计划同步：把 plan_days.json 里「今天」的科目写进 todolist。
+    # file / username 任一为空 = 关闭（本地开发不该报错）。计划文件是私人内容，
+    # 只以只读卷挂在服务器上，不进仓库。
+    file: ${PLAN_FILE:}
+    username: ${PLAN_SYNC_USERNAME:}
+    # 每天 04:00 换天（东八区）。改这个值可以临时提前跑一次做验证。
+    cron: ${PLAN_SYNC_CRON:0 0 4 * * *}
   notify:
     # QQ 机器人的文件投递目录与目标会话。两者任一为空 = 关闭提醒（只停表、不发消息）。
     # 目录不存在时启动不报错，但发送失败会打 warning。
