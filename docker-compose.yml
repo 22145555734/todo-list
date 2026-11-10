@@ -45,9 +45,14 @@ services:
       # 这里是公开仓库，不落具体会话。
       QQ_NOTIFY_INBOX: /var/lib/qq-notify/inbox
       QQ_NOTIFY_CHAT_KEY: ${QQ_NOTIFY_CHAT_KEY:-}
+      # 每日计划同步：文件从宿主机只读挂载；账号名只写在服务器 .env
+      PLAN_FILE: /var/lib/todo-plan/plan_days.json
+      PLAN_SYNC_USERNAME: ${PLAN_SYNC_USERNAME:-}
     volumes:
       # 机器人是宿主机进程，只监听回环；容器够不到它，于是共用这个目录投递
       - /var/lib/qq-notify/inbox:/var/lib/qq-notify/inbox
+      # 考研计划（私人内容，不进仓库）：后端每天 04:00 读它更新 todolist
+      - /root/todo/plan:/var/lib/todo-plan:ro
     networks:
       - todo-net
 
