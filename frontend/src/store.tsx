@@ -71,18 +71,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  // 待办和会话一起拉。待办必须跟着会话一起更新：预算按 planDate 归属，
+  // 只刷新会话、留着过期的 planDate，就会「正在计时但倒计时不动」（见下面的可见性刷新）。
+  const refreshAll = useCallback(async () => {
     try {
       const [t, s] = await Promise.all([api.listTodos(), api.listSessions()]);
       setTodos(t);
       setSessions(s);
     } catch (e) {
       handleError(e);
-    } finally {
-      setLoading(false);
     }
   }, [handleError]);
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    await refreshAll();
+    setLoading(false);
+  }, [refreshAll]);
 
   const refreshSessions = useCallback(async () => {
     try {
@@ -99,6 +104,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setAuthReady(true);
     }
   }, [token, loadData]);
+
+  // 页面一直开着，服务端干了什么它是不知道的：每天 04:00 的计划同步会把 planDate 翻到新一天，
+  // 预算扫描会把超时的会话停掉。回到页面时补拉一次，倒计时才不会卡在昨天的周期上。
+  useEffect(() => {
+    if (!token) return;
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refreshAll();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [token, refreshAll]);
 
   const login = useCallback(
     async (u: string, p: string) => {
@@ -284,12 +304,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         } else {
           await api.startTimer(todoId, Date.now());
         }
-        await refreshSessions();
+        // 这里连待办一起刷：会话的 planDate 是后端按当下的待办快照的，页面上的待办可能过期，
+        // 两边对不上倒计时就会原地不动。点一次开始，正好把页面拉回当前周期。
+        await refreshAll();
       } catch (e) {
         handleError(e);
       }
     },
-    [runningTodoId, refreshSessions, handleError],
+    [runningTodoId, refreshAll, handleError],
   );
 
   const ownMs = useCallback(
