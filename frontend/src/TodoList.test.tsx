@@ -765,3 +765,55 @@ test("继续学：预算用完后另开一段，超出的时间单独累计", as
     expect(screen.getByRole("button", { name: "暂停" })).toBeInTheDocument(),
   );
 });
+
+test("页面跨过 04:00：回到前台时重拉待办，倒计时回到今天的周期", async () => {
+  localStorage.setItem("todo-token", "test-token"); // 有 token 才会去拉数据
+  const sessions: TimeSession[] = [
+    {
+      id: "s",
+      todoId: "t",
+      subject: "高数",
+      rootSubject: null,
+      planDate: "2026-11-12",
+      plannedMs: 3600000,
+      start: Date.now() - 600000,
+      end: Date.now(),
+    },
+  ];
+  // 页面手里的待办还停在昨天 —— 服务端 04:00 已经翻到 11-12，但页面没重新加载
+  __seed(
+    [
+      {
+        id: "t",
+        text: "高数",
+        completed: false,
+        parentId: null,
+        plannedMs: 3600000,
+        planDate: "2026-11-11",
+      },
+    ],
+    sessions,
+  );
+  renderTodoList();
+
+  // 今天的 10 分钟按 planDate 归不进昨天的周期，看上去「一分没用、倒计时不动」
+  expect(await screen.findByText("剩余 01:00:00")).toBeInTheDocument();
+
+  // 回到前台时补拉：待办变成 11-12，已用才对上
+  __seed(
+    [
+      {
+        id: "t",
+        text: "高数",
+        completed: false,
+        parentId: null,
+        plannedMs: 3600000,
+        planDate: "2026-11-12",
+      },
+    ],
+    sessions,
+  );
+  document.dispatchEvent(new Event("visibilitychange"));
+
+  expect(await screen.findByText("剩余 00:50:00")).toBeInTheDocument();
+});
