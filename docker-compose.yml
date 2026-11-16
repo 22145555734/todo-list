@@ -3,6 +3,9 @@ services:
     image: mysql:8.0
     container_name: todo-mysql
     restart: unless-stopped
+    # 内存上限：1.6 GB 的机器上跑着 QQ bot，谁超了只死自己，不把整机拖进 swap。
+    # 11-16 的事故就是「都没有上限 → 一起挤进 swap 文件 → 云盘打满 → 全站卡死」。
+    mem_limit: 320m
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: todo
@@ -29,6 +32,8 @@ services:
     image: todo-backend:latest
     container_name: todo-backend
     restart: unless-stopped
+    # JVM 自身 -Xmx256m + MaxMetaspace128m，再留出线程栈与堆外，512m 够用
+    mem_limit: 512m
     build:
       context: ./backend
     depends_on:
@@ -62,6 +67,7 @@ services:
     image: todo-app:latest
     container_name: todo-app
     restart: unless-stopped
+    mem_limit: 64m
     build:
       context: ./frontend
     ports:
