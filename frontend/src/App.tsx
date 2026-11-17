@@ -28,6 +28,7 @@ function Shell() {
     return (
       <div className="min-h-screen bg-gray-100 py-10">
         <Auth />
+        <ExpLink />
       </div>
     );
   }
@@ -87,6 +88,28 @@ function Shell() {
           <Stats />
         </Suspense>
       )}
+
+      <ExpLink />
+    </div>
+  );
+}
+
+/**
+ * 课程实验用：首页放一张可右键「图片另存为」的图片，点击进入第二个页面。
+ * 素材是静态文件（public/exp3/），不走 React 路由，直接由 nginx 提供。
+ * 实验结束后删掉这个组件和 public/exp3/ 即可，不影响其它功能。
+ */
+function ExpLink() {
+  return (
+    <div className="mx-auto mt-6 w-full max-w-md rounded-xl bg-white p-4 text-center shadow-sm">
+      <a href="/exp3/page2.html">
+        <img
+          src="/exp3/pic.jpg"
+          alt="点击图片进入第二页"
+          className="w-full rounded-lg border-2 border-amber-300"
+        />
+      </a>
+      <p className="mt-2 text-xs text-gray-500">点击图片进入第二页</p>
     </div>
   );
 }
