@@ -1,0 +1,4 @@
+body { font-family: system-ui, "Microsoft YaHei", sans-serif; max-width: 720px; margin: 60px auto; padding: 0 20px; background: #fff; color: #222; }
+h1 { color: #204080; border-bottom: 2px solid #204080; padding-bottom: 8px; }
+.hint { color: #666; font-size: 14px; }
+img { border: 3px solid #ffd54f; border-radius: 6px; }
